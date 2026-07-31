@@ -421,24 +421,36 @@ Things to keep in mind when you edit the prompt itself:
   test, so **if you change the test, re-read all of them.** Note this reversed
   the earlier "remove all small appliances" rule — an equipped kitchen
   photographed well beats a bare one.
-- **Geometry has no latitude (changed 2026-07-27).** The frame is the source's:
-  same crop, same vantage, same focal length, same borders. No pull-back, no
-  zoom, no re-angle, no added canvas — and equally no cropping in or concealing
-  part of the room. The camera did what it did; we only fix light and clutter.
-  This replaces the earlier "latitude in one direction" policy, which permitted
-  a wider establishing frame and paid for it in invented architecture — see
-  "The pull-back is gone" above.
+- **Geometry: latitude is back, and this is the one to watch.** `PROMPT.md` as
+  it stands says *"Reframe for composition from the same vantage, keeping
+  everything the source shows. Widened margins continue the surfaces already
+  meeting that edge, in the same material"* and asks for Rule of Thirds,
+  symmetry, level horizon and headroom. The vantage is still fixed and nothing
+  may be cropped away — but the frame may be widened, which means canvas that
+  was never photographed.
+
+  **This reverses the 2026-07-27 rule**, which was "no pull-back, no added
+  canvas" and which existed because a wider establishing frame had paid for
+  itself in invented architecture — see "The pull-back is gone" above, which is
+  now history rather than current policy. Read that section before loosening
+  this any further: the failure it records is real, and the guard against it now
+  rests entirely on *"Widened margins continue the surfaces already meeting that
+  edge"* rather than on refusing to widen at all.
 - **An object clipped at a border stays clipped — that is the prompt working.**
   A half-visible tapestry, chair leg, or cabinet coming back still half-visible
   is correct. Restoring it would mean generating room that was never
   photographed, which is the one thing this project forbids.
-- **Two things are settled as intended behavior (2026-07-26), so don't "fix"
-  them.** Planting already in frame renders green and healthy, bounded by
-  layout — nothing planted that wasn't there, and one ground surface never
-  becomes another (bare earth stays bare earth, gravel stays gravel). And
-  people and vehicles are the model's call per photo: someone using the space
-  as a guest would stays, anyone incidental goes, and a kept figure that can't
-  render cleanly gets erased rather than shipped.
+- **Planting is settled as intended behavior (2026-07-26), so don't "fix" it.**
+  Planting already in frame renders green and healthy, bounded by layout —
+  nothing planted that wasn't there, and one ground surface never becomes
+  another (bare earth stays bare earth, gravel stays gravel).
+- **People and vehicles are no longer the model's call.** `PROMPT.md` now keeps
+  every one of them — *"every person, hand, arm and sleeve already in the source
+  stays — same position, same pose, same clothing, never erased or replaced by
+  empty surface"* — plus an explicit anatomy instruction for hands. The earlier
+  policy let the model decide per photo and erase a figure it could not render
+  cleanly; that judgement is gone, so a badly-rendered person now comes back in
+  the photograph rather than being removed from it. That is what the gate is for.
 - Avoid words like *dramatic, cinematic, moody, HDR-crunched* — they push
   toward a look buyers read as manipulated, not enhanced.
 
@@ -526,10 +538,18 @@ Requires `FAL_KEY` from https://fal.ai/dashboard/keys. Put it in `_config/.env` 
 it automatically. `_config/.env` holds a live billing credential: never commit
 it, never paste it into chat.
 
-The venv already has `fal-client`, `pillow`, and `python-dotenv` (`httpx`
-comes with `fal-client`). Rebuild with:
+One venv serves all four stages, so rebuild it from the declared list — never
+by naming packages by hand:
 
 ```bash
-python3 -m venv _config/.venv && ./_config/.venv/bin/pip install fal-client pillow python-dotenv
+python3 -m venv _config/.venv
+./_config/.venv/bin/pip install -r _config/requirements.txt
 ```
+
+This stage would run on `fal-client`, `pillow` and `python-dotenv` alone, which
+is what this paragraph used to say. Installing only those three silently breaks
+`0 - selection/` entirely — no `rawpy`, no `opencv`, and above all no
+`pillow-heif`, without which Pillow cannot open a phone's `.heic` **and does not
+say so**: a 48-photo delivery was once curated on the strength of the two JPEGs
+in it.
 

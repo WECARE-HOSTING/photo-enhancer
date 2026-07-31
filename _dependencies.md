@@ -146,7 +146,7 @@ rooms are called; `RULES.md` is what you edit to change which photos get chosen.
 | | |
 |---|---|
 | Depends on | `AMBIENTES.md` only. Imports nothing from this project, which is what lets `cull.py`, `develop.py` and both `review.py` import **it** without a cycle |
-| **Owns the only `NAME_RE`** | There were three. The stated reason — "a sibling folder whose name has spaces cannot be imported" — was never true: every stage already inserts a path and imports across. `grep -rn "NAME_RE" --include=*.py .` must return exactly one hit |
+| **Owns the only `NAME_RE`** | There were three. The stated reason — "a sibling folder whose name has spaces cannot be imported" — was never true: every stage already inserts a path and imports across. `grep -rn "NAME_RE" --include=*.py .` must show exactly one **definition**; the other hits are comments and the two `import ambientes` lines that name it |
 | `parse_name` strips every result suffix | `RESULT_SUFFIX_RE`, kept in step with `stage.RESULT_MARKERS`. It knew only `_edit` before; a `_final` stem returned `None` and every photo collapsed into one section headed `—` with an invalid HTML id |
 | The catalogue has two answer columns | `Ambiente` is the answer in force and what a person edits; `Visto` is what the last run saw. A difference is **proof of a human edit** rather than proof that two runs disagreed |
 | `Sala` is input too | It is the only way to say that two rooms of the same kind are two rooms |
@@ -243,7 +243,7 @@ Siblings. **A fix to one should be checked against the other.**
 | **`claro` and `escuro` name the ink, not the background** | Navy on a light wall, cream on a dark room. Reading it backwards is the obvious mistake |
 | Crops to the alpha bbox first | The PNGs carry 52px/55px of transparent padding and the two lockups pad differently. Sizing by the canvas renders 5% less art and puts the margin in the wrong place |
 | Scaled by the **long edge** | By width, a portrait photo gets a mark 33% smaller than a landscape one in the same gallery |
-| Thresholds were measured, not chosen | `MIN_CONTRAST = 4.0`, `BUSY_STD = 0.18`, against all 174 archived photographs: 68% navy, 31% cream, glow on 32%, worst 3.37:1, median 6.02:1. The first guesses were wrong in both directions — `3.0` would never have fired, `0.10` fired on 43%. **Re-measure if you change them**; it is free |
+| Thresholds were measured, not chosen | `MIN_CONTRAST = 4.0`, `BUSY_STD = 0.18`, against all 174 archived photographs: 69% navy, 31% cream, glow on 33%, worst 3.37:1, median 6.02:1. The first guesses were wrong in both directions — `3.0` would never have fired, `0.10` fired on 52%. **Re-measure if you change them**; it is free, and the numbers move with `LOGO_WIDTH_PCT` because a bigger mark samples a bigger patch |
 | Always reads the `_edit` | Never a `_final`. Marking is idempotent and JPEG loss never accumulates |
 | Replacing the logo re-marks everything | `needs_mark()` compares against the PNG's mtime |
 | No `MARCA.md` | `PROMPT.md` exists because it is 2.7 KB of prose edited weekly. This is six numbers, already calibrated. Constants at the top of the file, with the reasoning in comments |

@@ -101,12 +101,12 @@ alpha — only the pixels the strokes land on count, not the gaps between them.
    blurred, in the opposite tone. **A halo that follows the letterforms — never
    a box or a band**, which would wreck the photograph.
 
-Calibrated against the 174 archived photographs: **68% navy · 31% cream · glow
-on 32% · worst contrast 3.37:1 · median 6.02:1.**
+Calibrated against the 174 archived photographs: **69% navy · 31% cream · glow
+on 33% · worst contrast 3.37:1 · median 6.02:1.**
 
 Both thresholds were measured, not guessed, and the guesses were wrong in both
 directions: `3.0` would never have fired at all (the worst real case is 3.37:1)
-and `0.10` fired on 43% of photographs. If you change them, re-measure — running
+and `0.10` fired on **52%** of photographs at this size. If you change them, re-measure — running
 `marca.py` over `3 - completed/` costs nothing.
 
 ## The art

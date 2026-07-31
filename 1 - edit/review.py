@@ -126,7 +126,10 @@ def write(job: Path, pairs: "list[tuple[Path, Path]]", model: str, wall: str,
     dest = job / NAME
     dest.write_text(TEMPLATE.format(
         css=gate.BASE_CSS + OWN_CSS,
-        js=OWN_JS + gate.BASE_JS,
+        # BASE_JS opens the lightbox from the clicked thumbnail; OWN_JS runs
+        # after it so its src and caption win. Both are one <script>, so the
+        # hoisted zoomFlip() is visible to BASE_JS whatever the order.
+        js=gate.BASE_JS + OWN_JS,
         body="\n".join(rows),
         job=gate.esc(job.name),
         n=len(pairs),
@@ -185,19 +188,21 @@ function showZoom(which) {
   document.getElementById('flip').textContent =
     (which === 'a' ? 'antes' : 'depois') + '   a / b para trocar';
 }
+// gate.py's BASE_JS calls this when the zoomed image is clicked, so a click
+// flips and only the backdrop closes. It also seeds which pair is open, from the
+// thumbnail that was clicked to get here.
+function zoomFlip() { showZoom(zoomOn === 'a' ? 'b' : 'a'); }
+
 document.addEventListener('click', e => {
   if (e.target.matches('img.zoomable')) {
     zoomA = e.target.dataset.a; zoomB = e.target.dataset.b;
     showZoom(e.target.dataset.show || 'b');
-  } else if (e.target.matches('#zoom img')) {
-    showZoom(zoomOn === 'a' ? 'b' : 'a');    // click the image flips; the backdrop closes
-    e.stopPropagation();
   }
 });
 document.addEventListener('keydown', e => {
   if (!document.body.classList.contains('zoom')) return;
   if (e.key === 'a' || e.key === 'b') { showZoom(e.key); e.preventDefault(); }
-  if (e.key === ' ') { showZoom(zoomOn === 'a' ? 'b' : 'a'); e.preventDefault(); }
+  if (e.key === ' ') { zoomFlip(); e.preventDefault(); }
 });
 """
 

@@ -319,7 +319,12 @@ def download(url: str, dest: Path, attempts: int = 3) -> None:
             dest.unlink(missing_ok=True)
             if attempt < attempts:
                 time.sleep(2 * attempt)
-    fail(f"could not download result after {attempts} attempts: {last}")
+    # phase="after": by the time anything is downloaded the model has already
+    # run and fal has already billed for it. Reporting this as "before" would
+    # tell you at 2am that nothing was charged, which is the one thing the
+    # phase field exists to answer correctly.
+    fail(f"could not download result after {attempts} attempts: {last}",
+         phase="after")
 
 
 def rel(p: Path) -> str:

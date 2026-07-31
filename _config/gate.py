@@ -72,7 +72,7 @@ PAGES = {
 # the human sees again, and handed to the stage as instructions for the re-run.
 # They apply to that run only — the resulting file on disk IS the persistence,
 # so nothing has to read a log back to honour them.
-OPT_RE = re.compile(r"\b(variant|glow)=(\S+)", re.I)
+OPT_RE = re.compile(r"\b(variant|glow)=([A-Za-z_-]+)", re.I)
 
 
 @dataclass
@@ -120,7 +120,13 @@ def parse(path: Path) -> "tuple[list[Mark], list[str]]":
 
         opts = {m.group(1).lower(): m.group(2).lower() for m in OPT_RE.finditer(note)}
         if opts:
-            note = OPT_RE.sub("", note).strip(" ·,;")
+            # Cutting the token out of the middle of a sentence leaves the
+            # punctuation from both sides of it touching: "sumiu, variant=claro.
+            # refazer" became "sumiu, . refazer". Collapse the pair to the first
+            # mark, squeeze the whitespace, then tidy the ends.
+            note = OPT_RE.sub("", note)
+            note = re.sub(r"([,;.·])(?:\s*[,;.·])+", r"\1", note)
+            note = re.sub(r"\s{2,}", " ", note).strip(" ·,;.")
         marks.append(Mark(key=key, back=back, comment=note, opts=opts))
     return marks, unknown
 
@@ -286,7 +292,11 @@ button:disabled { opacity:.4; cursor:not-allowed }
 # Shared behaviour. A page supplies GATE_HEADER, GATE_FILE and PREFILL, and may
 # define paintExtra() to update its own counters.
 BASE_JS = """
-const boxes = () => [...document.querySelectorAll('input[data-key]')];
+// Checkboxes ONLY. The stage-2 page also gives its override radios a data-key,
+// and a bare input[data-key] picked those up too: the "auto" radio ships
+// checked, so paint() counted every photo as marked, the counter read N with
+// nothing ticked, and the Approve button could never enable.
+const boxes = () => [...document.querySelectorAll('input[type="checkbox"][data-key]')];
 const noteOf = k => document.querySelector('textarea[data-key="' + CSS.escape(k) + '"]');
 const optOf  = k => {
   const el = document.querySelector('[data-opt][data-key="' + CSS.escape(k) + '"]:checked');
@@ -358,18 +368,29 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => {
   if (e.target.matches('textarea[data-key]')) dirty = true;
 });
+function closeZoom() {
+  document.getElementById('zoom').classList.remove('on');
+  document.body.classList.remove('zoom');
+}
+
+// The lightbox used to carry an inline onclick that closed on any click inside
+// it. That fired while the event was still bubbling, so a page handler further
+// out never got to act — the edit page's A/B flip was reachable only by keyboard.
+// Now the backdrop closes, and a click on the image asks the page first.
 document.addEventListener('click', e => {
-  if (!e.target.matches('img.zoomable')) return;
-  const z = document.getElementById('zoom');
-  z.querySelector('img').src = e.target.dataset.full || e.target.src;
-  z.classList.add('on');
-  document.body.classList.add('zoom');
+  if (e.target.matches('img.zoomable')) {
+    const z = document.getElementById('zoom');
+    z.querySelector('img').src = e.target.dataset.full || e.target.src;
+    z.classList.add('on');
+    document.body.classList.add('zoom');
+  } else if (e.target.matches('#zoom img')) {
+    if (typeof zoomFlip === 'function') zoomFlip(); else closeZoom();
+  } else if (e.target.id === 'zoom') {
+    closeZoom();
+  }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    document.getElementById('zoom').classList.remove('on');
-    document.body.classList.remove('zoom');
-  }
+  if (e.key === 'Escape') closeZoom();
 });
 
 // Prevents the loss instead of recovering from it, which is why there is no
@@ -387,10 +408,15 @@ PREFILL.forEach(m => {
   if (b) b.checked = m.back;
   const t = noteOf(m.key);
   if (t && m.comment) t.value = m.comment;
-  const o = m.opts && (m.opts.variant || m.opts.glow);
-  if (o) {
+  // The radios carry the whole token ("variant=claro"), which is what optOf()
+  // reads back and what markLines() writes. Restoring from the bare value
+  // ("claro") matched nothing, so a forced ink silently reverted to auto on the
+  // next copy — the opposite of what pre-filling is for.
+  const tok = m.opts && (m.opts.variant ? 'variant=' + m.opts.variant
+                       : m.opts.glow ? 'glow=' + m.opts.glow : '');
+  if (tok) {
     const r = document.querySelector('[data-opt][data-key="' + CSS.escape(m.key)
-                                     + '"][value="' + o + '"]');
+                                     + '"][value="' + tok + '"]');
     if (r) r.checked = true;
   }
 });
@@ -399,8 +425,9 @@ paint();
 
 
 def zoom_div() -> str:
-    return ('<div id="zoom" onclick="this.classList.remove(\'on\');'
-            'document.body.classList.remove(\'zoom\')"><img alt=""></div>')
+    """The lightbox, deliberately without an inline onclick — see `closeZoom` in
+    BASE_JS for why that inline handler broke the A/B flip."""
+    return '<div id="zoom"><img alt=""></div>'
 
 
 def header_line(page: str, job: str) -> str:

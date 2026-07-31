@@ -234,6 +234,11 @@ def main() -> None:
               + (f": {', '.join(m.key for m in back[:4])}"
                  f"{' …' if len(back) > 4 else ''}" if back
                  else " (só comentários, nada para refazer)"))
+        # Reset the paste target now that its marks are recorded in gate.md and
+        # acted on. Leaving them there was a dead end: the page pre-filled itself
+        # with photos that had already been redone, and --approve refused forever
+        # because the file still asked for a rework it had already had.
+        (job / gate.NAME).unlink(missing_ok=True)
 
     photos = all_photos if args.redo else [
         p for p in all_photos if not stage.is_done(job, p, SUFFIX)]

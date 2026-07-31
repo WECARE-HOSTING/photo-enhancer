@@ -327,16 +327,27 @@ def develop_rest(shoot: Path, picked: "set[Path]", workers: int) -> "list[Path]"
     might promote later deserves the same resolution as one you kept.
     """
     out = shoot / REST_DIR
-    todo = []
-    for p in sorted(shoot.joinpath("source").rglob("*")):
+    src_root = shoot / "source"
+    todo, seen = [], {}
+    for p in sorted(src_root.rglob("*")):
         if not (p.is_file() and p.suffix.lower() in PHOTO_EXTS) or p in picked:
             continue
-        dest = out / f"{p.stem}.jpg"
+        # Flattening source/ into one folder means two photographs in different
+        # subfolders can share a stem — `1_Imovel/DSC_0042.JPG` and
+        # `3_Condominio/DSC_0042.NEF` both wanted `developed/DSC_0042.jpg`, and
+        # one silently overwrote the other, so the archive lost a photograph and
+        # the manifest still listed both. Disambiguate by the folder it came from.
+        name = p.stem
+        if name in seen:
+            rel_parent = p.parent.relative_to(src_root).as_posix().replace("/", "_")
+            name = f"{rel_parent}_{p.stem}" if rel_parent != "." else f"{p.stem}_2"
+        seen[name] = p
+        dest = out / f"{name}.jpg"
         if not dest.exists():
             todo.append((p, dest))
 
     if not todo:
-        return sorted(out.glob("*.jpg")) if out.is_dir() else []
+        return sorted(out / f"{n}.jpg" for n in seen) if out.is_dir() else []
 
     out.mkdir(exist_ok=True)
     print(f"\nrestante    {len(todo)} não escolhida(s) -> {rel(out)}/  "
@@ -353,7 +364,10 @@ def develop_rest(shoot: Path, picked: "set[Path]", workers: int) -> "list[Path]"
             if done and done % 50 == 0:
                 print(f"  {done}/{len(todo)}")
     print(f"  {done}/{len(todo)} reveladas")
-    return sorted(out.glob("*.jpg"))
+    # What this run accounts for, not whatever happens to be in the folder: a
+    # leftover from an earlier shoot layout would otherwise be reported as part
+    # of this delivery and copied into the archive as one of its photographs.
+    return sorted(p for p in (out / f"{n}.jpg" for n in seen) if p.exists())
 
 
 def _develop_plain(src: Path, dest: Path) -> "tuple[int, str]":
@@ -496,9 +510,14 @@ def main() -> None:
             sys.exit(f"error: {args.job} não existe em estágio nenhum.")
         out_dir = existing[args.job]
         if out_dir.parent != EDIT_DIR:
+            back = ("archive.py --return o traz de 3 - completed/ para "
+                     "2 - marca dagua/,\n       e de lá não há volta automática "
+                     "para cá — mova a pasta à mão se é isso mesmo."
+                     if out_dir.parent == paths.COMPLETED_DIR else
+                     "não há comando que o traga de volta para cá — mova a "
+                     "pasta à mão\n       se é isso mesmo que você quer.")
             sys.exit(f"error: {args.job} já saiu de {rel(EDIT_DIR)} — está em "
-                     f"{rel(out_dir.parent)}/.\n       Um trabalho que já andou "
-                     "não volta por aqui; use archive.py --return.")
+                     f"{rel(out_dir.parent)}/.\n       {back}")
     else:
         out_dir = EDIT_DIR / stage.new_job_name()
 
@@ -570,8 +589,18 @@ def main() -> None:
           f"{elapsed:.0f}s ===")
 
     if tally["failed"]:
-        print(f"\n{tally['failed']} pick(s) failed. Fix or remove those lines in "
-              "picks.txt and re-run with --force.")
+        # Take the half-built job back out of the stage. Returning here used to
+        # leave `1 - edit/Job_NNNN/` holding the photos that worked and none of
+        # the files that describe them — no `job.md`, so no `**Shoot:**`, so the
+        # archive could never assemble `originais/` for it. Worse, `batch.py`
+        # would have found it, and sent an incomplete set to the paid API.
+        #
+        # A job in a stage folder is a whole job. Re-developing costs seconds and
+        # no API call, so the cheap thing to throw away is the work, not that rule.
+        shutil.rmtree(out_dir, ignore_errors=True)
+        print(f"\n{tally['failed']} pick(s) failed, so {rel(out_dir)} was removed "
+              "rather than left half-built.\n   Fix or remove those lines in "
+              "picks.txt and run this again — nothing was handed on.")
         return
 
     # Everything the delivery contained, not just what was kept. This is what

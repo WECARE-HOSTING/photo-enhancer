@@ -30,9 +30,10 @@ actually cover:
      alpha, blurred, in the opposite tone. A halo that follows the letterforms,
      never a box or a band, which would wreck the photograph.
 
-Calibrated against the 174 archived photographs: 68% navy, 31% cream, glow on
-32%, worst contrast 3.37:1, median 6.02:1. Both thresholds were measured, not
-guessed — 3.0 would never have fired at all, and 0.10 fired on 43%.
+Calibrated against the 174 archived photographs: 69% navy, 31% cream, glow on
+33%, worst contrast 3.37:1, median 6.02:1. Both thresholds were measured, not
+guessed — 3.0 would never have fired at all, and 0.10 fired on 52%. The rates
+move with LOGO_WIDTH_PCT, because a bigger mark samples a bigger patch.
 
 The gold is the fragile element: it is in both colourways and is a mid-tone, so
 in warm light it loses force while the navy or cream carries the mark. The
@@ -130,9 +131,18 @@ class Logo:
 
     @classmethod
     def load(cls, path: Path) -> "Logo":
+        """Decode and measure once per file, per version of that file.
+
+        Only entries for *this* path are dropped on a miss. Clearing the whole
+        cache looked equivalent and was not: `inks()` loads two logos in a row,
+        so the second load evicted the first, the next call evicted the second,
+        and the cache never held both. Measured, that decoded two 2192x480 PNGs
+        on every single call — 41 ms a photo, on every page write.
+        """
         key = (str(path), path.stat().st_mtime)
         if key not in cls._cache:
-            cls._cache.clear()          # the file changed; the old measure is stale
+            for stale in [k for k in cls._cache if k[0] == str(path)]:
+                del cls._cache[stale]   # this file changed; its old measure is stale
             cls._cache[key] = cls(path)
         return cls._cache[key]
 
@@ -199,7 +209,14 @@ def run(edit: Path, out_dir: "Path | None" = None, emit=print,
 
     out_dir = Path(out_dir) if out_dir else edit.parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = edit.stem[: -len(SOURCE_SUFFIX)] if edit.stem.endswith(SOURCE_SUFFIX) \
+
+    # Split, not endswith. With `NUM_IMAGES > 1` — which `enhance.py` documents as
+    # the prompt-tuning setting — stage 1 writes `NAME_edit_1.jpg`, and an
+    # endswith test fell through and produced `NAME_edit_1_final.jpg`. Nothing
+    # then found it: `result_of` looks for `NAME_final.jpg`, so every run
+    # re-marked the whole job, the review page showed zero photos right after
+    # saying it had marked them all, and `--approve` refused forever.
+    stem = edit.stem.split(SOURCE_SUFFIX)[0] if SOURCE_SUFFIX in edit.stem \
         else edit.stem
 
     dark, light = inks()

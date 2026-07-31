@@ -96,20 +96,29 @@ def resolve(job: Path) -> "tuple[list, list[str]]":
     return ok, [getattr(u, "key", u) for u in unknown]
 
 
-def facts_for(job: Path, photos: "list[Path]") -> "dict[str, dict]":
+def facts_for(job: Path, photos: "list[Path]",
+              overrides: "dict[str, dict] | None" = None) -> "dict[str, dict]":
     """Measure every photo that has an `_edit`, without writing anything.
 
     Measured fresh rather than read out of `marca.md`, because nothing in this
     project reads a log to decide anything — and measuring is deterministic and
     costs milliseconds.
+
+    `overrides` matters: measuring with none would report the *auto* ink for a
+    photo whose `_final` was deliberately forced to the other one, so the gate
+    page's badge would contradict the pixels next to it and the radio above it.
     """
+    overrides = overrides or {}
     out = {}
     for p in photos:
         edit = stage.result_of(job, p, SOURCE)
         if not edit:
             continue
+        o = overrides.get(p.stem, {})
         try:
-            out[p.stem] = marca.run(edit, write=False)
+            out[p.stem] = marca.run(
+                edit, write=False, variant=o.get("variant"),
+                glow={"on": True, "off": False}.get(o.get("glow")))
         except marca.MarcaError:
             pass
     return out
@@ -157,9 +166,10 @@ def fold_gate(job: Path, marks: "list", approved: int) -> None:
                   f"`{gate.RECORD}` rodada {n}")
 
 
-def write_review(job: Path, wall: str) -> Path:
+def write_review(job: Path, wall: str,
+                 overrides: "dict[str, dict] | None" = None) -> Path:
     photos = stage.photos_in(job)
-    facts = facts_for(job, photos)
+    facts = facts_for(job, photos, overrides)
     trios, missing = [], []
     for p in photos:
         edit = stage.result_of(job, p, SOURCE)
@@ -249,6 +259,9 @@ def main() -> None:
         overrides = {m.key: m.opts for m in marks if m.back or m.opts}
         removed = stage.drop_results(job, [m.key for m in back], SUFFIX)
         print(f"rework      {len(back)} foto(s), {removed} arquivo(s) apagado(s)")
+        # Same reason as stage 1: the marks are in gate.md now, and a stale
+        # gate.txt would block --approve permanently.
+        (job / gate.NAME).unlink(missing_ok=True)
 
     since = logo_mtime()
     todo = photos if args.rebrand else [
@@ -285,8 +298,17 @@ def main() -> None:
             facts[photo.stem] = f
         except marca.MarcaError as e:
             failed.append(f"{photo.stem}: {e}")
+        except Exception as e:      # noqa: BLE001 — one truncated JPEG must not
+            failed.append(f"{photo.stem}: {type(e).__name__}: {e}")
+            # stop the other 59. Stage 1 already treats one bad photo this way;
+            # here the whole batch is free to re-run, so failing soft costs
+            # nothing and failing hard would strand the job mid-stage.
 
-    facts |= {k: v for k, v in facts_for(job, photos).items() if k not in facts}
+    # Photos marked this run keep their real facts; the rest are measured. The
+    # `if k not in facts` is what stops a measurement without the override from
+    # overwriting the truth of a photo that was just forced.
+    facts |= {k: v for k, v in facts_for(job, photos, overrides).items()
+              if k not in facts}
     write_record(job, facts)
 
     elapsed = time.time() - t_start
@@ -306,7 +328,7 @@ def main() -> None:
     stage.log_run(job, [f"Marca: {summary}"])
     ledger.append(paths.MARCA_DIR, job.name,
                   f"run {gate.rounds_so_far(job, STAGE) + 1}", len(todo), summary)
-    write_review(job, wall)
+    write_review(job, wall, overrides)
     paths.notify(f"{job.name} — marca", summary)
 
     print("\nO recorte 1:1 na página é o que importa. Se algo estiver errado:\n"
