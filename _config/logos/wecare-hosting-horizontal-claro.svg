@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 548 120" width="548" height="120" role="img" aria-label="wecare hosting">
+  <g transform="translate(8,12) scale(1.6)">
+    <path d="M24 61.5 C13.5 45 4.5 35.2 4.5 22 A19.5 19.5 0 1 1 43.5 22 C43.5 35.2 34.5 45 24 61.5 Z" fill="none" stroke="#F2EAD9" stroke-width="2.6" stroke-linejoin="round"></path>
+    <path d="M12.5 25.5 L24 13.5 L35.5 25.5" fill="none" stroke="#B79152" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path d="M15.5 24.7 V33 H32.5 V24.7" fill="none" stroke="#F2EAD9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+  </g>
+  <text x="106" y="86" font-family="Inter, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-size="58" letter-spacing="-1" fill="#F2EAD9"><tspan font-weight="600">wecare</tspan><tspan font-weight="400"> hosting</tspan><tspan font-weight="600" fill="#B79152">.</tspan></text>
+</svg>

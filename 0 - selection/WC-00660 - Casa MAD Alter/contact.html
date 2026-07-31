@@ -1,0 +1,415 @@
+<title>WC-00660 - Casa MAD Alter — contact sheet</title>
+<style>
+:root { color-scheme: light dark; --bg:#fff; --fg:#111; --dim:#666; --line:#e2e2e2;
+        --pick:#0a7d3c; --flag:#b3261e; --warnbg:#fff4e5; --warnfg:#8a4b00; }
+@media (prefers-color-scheme: dark) { :root {
+  --bg:#141414; --fg:#eee; --dim:#999; --line:#2e2e2e; --pick:#4ade80;
+  --flag:#ff6b6b; --warnbg:#3a2a10; --warnfg:#f5c26b; } }
+* { box-sizing:border-box }
+body { margin:0; padding:1.2rem 1.4rem 6rem; background:var(--bg); color:var(--fg);
+  font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+h1 { font-size:1.3rem; margin:0 0 .2rem }
+.sub { color:var(--dim); margin:0 0 1.4rem }
+h2 { font-size:1rem; margin:2rem 0 .6rem; padding-bottom:.3rem;
+  border-bottom:1px solid var(--line); display:flex; justify-content:space-between;
+  align-items:baseline; position:sticky; top:2.05rem; background:var(--bg); z-index:2 }
+h2 small { color:var(--dim); font-weight:400 }
+/* Two tiers of sticky header, offset so they stack instead of overlapping: the
+   ambiente stays put while you scroll through its rooms, and the room heading —
+   which carries that room's own quota counter — rides just below it. */
+h1.amb { font-size:.78rem; letter-spacing:.09em; text-transform:uppercase;
+  margin:2.4rem 0 0; padding:.42rem 0 .3rem; display:flex; gap:.6rem;
+  align-items:baseline; position:sticky; top:0; z-index:3; background:var(--bg);
+  border-bottom:2px solid var(--fg) }
+h1.amb small { color:var(--dim); font-weight:400; letter-spacing:0;
+  text-transform:none }
+section:first-of-type h1.amb { margin-top:1rem }
+.fix, .unv { margin-left:.5rem; padding:.05rem .34rem; border-radius:4px;
+  font-size:10px; font-weight:700; vertical-align:.1em; letter-spacing:.03em;
+  text-transform:uppercase }
+.fix { background:color-mix(in srgb, var(--pick) 15%, transparent); color:var(--pick) }
+.unv { background:var(--warnbg); color:var(--warnfg) }
+.grid { display:grid; gap:.7rem; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)) }
+.tile { display:block; border:2px solid transparent; border-radius:8px;
+  overflow:hidden; background:var(--bg); position:relative }
+.shot { display:block; cursor:pointer }
+/* The room control. Quiet until you touch it — it is a correction surface, not
+   part of the picking, and it must not compete with the checkbox for attention. */
+.rm { display:block; width:100%; border:0; border-top:1px solid var(--line);
+  padding:.3rem .5rem; font:11px/1.4 inherit; color:var(--dim);
+  background:transparent; cursor:pointer; appearance:none }
+.rm:hover { color:var(--fg); background:color-mix(in srgb, var(--fg) 5%, transparent) }
+.rm.moved { color:var(--pick); font-weight:700;
+  background:color-mix(in srgb, var(--pick) 12%, transparent) }
+.tile img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block;
+  background:var(--line); opacity:.62; transition:opacity .12s }
+.tile.best img { opacity:.85 }
+.tile input { position:absolute; top:.45rem; left:.45rem; z-index:1; width:19px; height:19px;
+  accent-color:var(--pick); cursor:pointer }
+.tile:has(input:checked) { border-color:var(--pick) }
+.tile:has(input:checked) img { opacity:1 }
+.tile:hover img { opacity:1 }
+.tile.flagged { border-color:color-mix(in srgb, var(--flag) 40%, transparent) }
+.cap { display:block; padding:.4rem .5rem .55rem }
+.cap code { font-size:11px; color:var(--dim) }
+.meta { display:block; font-size:11px; color:var(--dim); margin-top:.15rem }
+.flag, .warn, .why { display:inline-block; margin:.28rem .28rem 0 0; padding:.1rem .38rem;
+  border-radius:4px; font-size:10.5px; line-height:1.5 }
+.flag { background:color-mix(in srgb, var(--flag) 16%, transparent); color:var(--flag) }
+.warn { background:var(--warnbg); color:var(--warnfg) }
+.why { background:color-mix(in srgb, var(--pick) 13%, transparent); color:var(--pick);
+  font-style:italic }
+.tile.chosen { border-color:var(--pick) }
+.count.past, #over.past { color:var(--flag); font-weight:700 }
+.note { margin:0 0 1.2rem; padding:.6rem .8rem; border-radius:7px;
+  background:var(--warnbg); color:var(--warnfg); font-size:12.5px }
+#bar { position:fixed; left:0; right:0; bottom:0; padding:.7rem 1.4rem;
+  background:color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter:blur(12px); border-top:1px solid var(--line);
+  display:flex; gap:.8rem; align-items:center; z-index:9 }
+button { font:inherit; padding:.42rem .85rem; border-radius:7px; cursor:pointer;
+  border:1px solid var(--line); background:var(--bg); color:var(--fg) }
+button.go { background:var(--pick); border-color:var(--pick); color:#fff; font-weight:600 }
+button.amb { background:var(--warnbg); border-color:var(--warnfg); color:var(--warnfg);
+  font-weight:600 }
+#n { font-variant-numeric:tabular-nums; font-weight:600 }
+#hint { color:var(--dim); margin-left:auto; font-size:12px }
+</style>
+
+<h1>WC-00660 - Casa MAD Alter</h1>
+<p class="sub">Type <b>C</b> — JPEG, camera filenames — the room has to be recognised<br>
+48 file(s) → 48 scene(s) → <b>48 distinct angle(s)</b> across
+13 room(s) · read in 40s · rules <code>#0e9441cc</code> · 2026-07-31 02:49<br>
+Quota: <b>40 slots</b> for a target of 40–60 — 32 from the floor of 3 per room, +8 expanded. Each room's
+counter turns red past its share. Grouped by ambiente, and within it by room, in
+the order the photographer numbered them — the order they walked the property.
+Each room's heading is the name its photographs are delivered under:
+<code>QUARTO_02</code> becomes <code>QUARTO_02_0001.jpg</code>. A green
+<b class="fix">corrected</b> means the picture disagreed with the filename and the
+picture won; <b class="unv">?</b> means nobody checked. Red badges are the strategy
+document's hard rules; amber are worth a second look.<br>
+<b>The line under each photograph is the room it will be delivered as</b> — change
+it when the picture disagrees, or when one room turns out to be two. Two bedrooms
+that photograph alike are only told apart here, by looking at them together, so
+<code>+ novo QUARTO</code> gives the second one its own number, its own quota and
+its own <code>QUARTO_02_NNNN.jpg</code>. Then copy
+<code>ambientes.md</code>, paste it over the file beside this one, and re-run
+<code>cull.py --no-classify</code> — free, and it re-cuts the quota for the rooms
+you just created.</p>
+<p class="note">The room names were <b>not verified against the pictures</b> (<code>--no-classify</code>), so they are the 48 answer(s) already in <code>ambientes.md</code>.<br>Pre-ticked by <code>google/gemini-2.5-flash-lite</code>, with its reason on each tile. It has never seen this property and does not know what the listing promises — treat it as a first draft.</p>
+
+<section data-ambiente="BANHEIRO">
+<h1 class="amb">BANHEIRO<small>bathroom</small></h1>
+<h2 data-room="BANHEIRO_01"><span>BANHEIRO_01  ·  unlabelled<b class="fix" title="Ambiente com vaso sanitário, pia e bancada, caracterizando um banheiro.">corrected</b></span><small><b class="count" data-for="BANHEIRO_01">0</b>/2 picked · all it has · 2 photos · 2 angles · bathroom</small></h2>
+<div class="grid">
+<div class="tile best flagged chosen"><label class="shot"><input type="checkbox" data-pick="IMG_7190.HEIC" data-room="BANHEIRO_01" checked><img src="_proxies/IMG_7190.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_7190.HEIC</code><span class="meta">24mm eq · roll +11.1° · splay 49°</span><span class="flag">leaning +11.1°</span><span class="flag">verticals splay 49° (three-point perspective)</span><span class="why">Mostra a bancada e a pia, focando na funcionalidade do banheiro com boa iluminação e organização.</span></span></label><select class="rm" data-room="BANHEIRO_01" data-files="IMG_7190.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9704.HEIC" data-room="BANHEIRO_01" checked><img src="_proxies/IMG_9704.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9704.HEIC</code><span class="meta">24mm eq · roll -2.4° · splay 6°</span><span class="why">Apresenta a pia e a bancada, mas a inclusão do vaso sanitário é menos ideal para a apresentação inicial do banheiro.</span></span></label><select class="rm" data-room="BANHEIRO_01" data-files="IMG_9704.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="COZINHA">
+<h1 class="amb">COZINHA<small>kitchen</small></h1>
+<h2 data-room="COZINHA_01"><span>COZINHA_01  ·  unlabelled<b class="fix" title="Ambiente com bancadas, armários, equipamentos de cozinha e área de preparo de alimentos.">corrected</b></span><small><b class="count" data-for="COZINHA_01">0</b>/1 picked · all it has · 1 photos · 1 angles · kitchen</small></h2>
+<div class="grid">
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9737.HEIC" data-room="COZINHA_01" checked><img src="_proxies/IMG_9737.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9737.HEIC</code><span class="meta">24mm eq · roll +0.6° · splay 7°</span><span class="why">A imagem mostra claramente a funcionalidade da cozinha, com bancadas, fogão e geladeira visíveis, e o espaço parece organizado e amplo.</span></span></label><select class="rm" data-room="COZINHA_01" data-files="IMG_9737.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="FACHADA">
+<h1 class="amb">FACHADA<small>hero_outdoor</small></h1>
+<h2 data-room="FACHADA_01"><span>FACHADA_01  ·  unlabelled<b class="fix" title="A imagem mostra uma praia com um barco e uma pessoa caminhando, não é possível identificar um ambiente específico da propriedade.">corrected</b></span><small><b class="count" data-for="FACHADA_01">0</b>/5 picked · 6 photos · 6 angles · hero_outdoor</small></h2>
+<div class="grid">
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_5851.HEIC" data-room="FACHADA_01"><img src="_proxies/IMG_5851.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_5851.HEIC</code><span class="meta">61mm eq · roll +5.2° · splay 2°</span><span class="flag">leaning +5.2°</span></span></label><select class="rm" data-room="FACHADA_01" data-files="IMG_5851.HEIC"></select></div>
+<div class="tile best flagged chosen"><label class="shot"><input type="checkbox" data-pick="IMG_6402.HEIC" data-room="FACHADA_01" checked><img src="_proxies/IMG_6402.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_6402.HEIC</code><span class="meta">48mm eq · roll +5.3° · splay 11°</span><span class="flag">leaning +5.3°</span><span class="why">Apresenta uma formação rochosa interessante, adicionando um elemento visual único à paisagem.</span></span></label><select class="rm" data-room="FACHADA_01" data-files="IMG_6402.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_7075.HEIC" data-room="FACHADA_01" checked><img src="_proxies/IMG_7075.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_7075.HEIC</code><span class="meta">24mm eq</span><span class="warn">geometry unmeasurable (0 verticals found)</span><span class="why">Mostra um pequeno bangalô na praia, indicando um local de descanso e abrigo.</span></span></label><select class="rm" data-room="FACHADA_01" data-files="IMG_7075.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_8870.HEIC" data-room="FACHADA_01" checked><img src="_proxies/IMG_8870.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_8870.HEIC</code><span class="meta">17mm eq</span><span class="warn">geometry unmeasurable (1 verticals found)</span><span class="warn">17mm equivalent, wide</span><span class="why">Apresenta a paisagem da praia e a água, destacando o ambiente natural e tranquilo.</span></span></label><select class="rm" data-room="FACHADA_01" data-files="IMG_8870.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_8921.HEIC" data-room="FACHADA_01" checked><img src="_proxies/IMG_8921.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_8921.HEIC</code><span class="meta">404mm eq</span><span class="warn">geometry unmeasurable (0 verticals found)</span><span class="why">Oferece uma vista da praia com um barco, sugerindo atividades de lazer e exploração.</span></span></label><select class="rm" data-room="FACHADA_01" data-files="IMG_8921.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="_O4A0203.JPG" data-room="FACHADA_01" checked><img src="_proxies/_O4A0203.jpg" loading="lazy" alt=""><span class="cap"><code>_O4A0203.JPG</code><span class="meta">24mm eq</span><span class="warn">geometry unmeasurable (2 verticals found)</span><span class="why">Mostra a área de lazer externa com cadeiras e guarda-sóis, convidando ao relaxamento.</span></span></label><select class="rm" data-room="FACHADA_01" data-files="_O4A0203.JPG"></select></div>
+</div>
+</section>
+<section data-ambiente="JANTAR">
+<h1 class="amb">JANTAR<small>social</small></h1>
+<h2 data-room="JANTAR_01"><span>JANTAR_01  ·  unlabelled<b class="fix" title="A imagem mostra uma mesa posta com alimentos, sugerindo um ambiente de refeição.">corrected</b></span><small><b class="count" data-for="JANTAR_01">0</b>/3 picked · 3 photos · 3 angles · social</small></h2>
+<div class="grid">
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_0577.HEIC" data-room="JANTAR_01" checked><img src="_proxies/IMG_0577.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_0577.HEIC</code><span class="meta">24mm eq</span><span class="why">A imagem mostra claramente a mesa de jantar posta, destacando a refeição e o ambiente, com boa iluminação e organização.</span></span></label><select class="rm" data-room="JANTAR_01" data-files="IMG_0577.HEIC"></select></div>
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_0583.HEIC" data-room="JANTAR_01"><img src="_proxies/IMG_0583.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_0583.HEIC</code><span class="meta">24mm eq · roll -1.2° · splay 32°</span><span class="flag">verticals splay 32° (three-point perspective)</span></span></label><select class="rm" data-room="JANTAR_01" data-files="IMG_0583.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_8953.HEIC" data-room="JANTAR_01" checked><img src="_proxies/IMG_8953.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_8953.HEIC</code><span class="meta">48mm eq · roll -3.4° · splay 20°</span><span class="warn">slight lean -3.4°</span><span class="warn">verticals splay 20°</span><span class="why">Esta foto oferece uma perspectiva diferente da mesa de jantar, mostrando a disposição dos assentos e o ambiente geral, embora esteja ligeiramente fora de nível.</span></span></label><select class="rm" data-room="JANTAR_01" data-files="IMG_8953.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="JARDIM">
+<h1 class="amb">JARDIM<small>hero_outdoor</small></h1>
+<h2 data-room="JARDIM_01"><span>JARDIM_01  ·  unlabelled<b class="fix" title="A imagem mostra uma pessoa em um ambiente aquático com vegetação e um barco ao fundo, não é possível identificar um cômodo específico da lista.">corrected</b></span><small><b class="count" data-for="JARDIM_01">0</b>/2 picked · all it has · 2 photos · 2 angles · hero_outdoor</small></h2>
+<div class="grid">
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_2756.HEIC" data-room="JARDIM_01" checked><img src="_proxies/IMG_2756.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_2756.HEIC</code><span class="meta">77mm eq · roll -0.1° · splay 0°</span><span class="why">Mostra a área externa e a interação com a natureza, transmitindo a ideia de lazer e relaxamento.</span></span></label><select class="rm" data-room="JARDIM_01" data-files="IMG_2756.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="_O4A0633.JPG" data-room="JARDIM_01" checked><img src="_proxies/_O4A0633.jpg" loading="lazy" alt=""><span class="cap"><code>_O4A0633.JPG</code><span class="meta">155mm eq</span><span class="why">Destaca a beleza da paisagem aquática e da praia, sugerindo um local tranquilo para atividades ao ar livre.</span></span></label><select class="rm" data-room="JARDIM_01" data-files="_O4A0633.JPG"></select></div>
+</div>
+</section>
+<section data-ambiente="NAO_IDENTIFICADO">
+<h1 class="amb">NAO_IDENTIFICADO<small>default</small></h1>
+<h2 data-room="NAO_IDENTIFICADO_01"><span>NAO_IDENTIFICADO_01  ·  unlabelled<b class="fix" title="A imagem mostra uma pessoa em um rio ou lago cercado por árvores, não é possível identificar um ambiente específico da propriedade.">corrected</b></span><small><b class="count" data-for="NAO_IDENTIFICADO_01">0</b>/4 picked · 6 photos · 6 angles · default</small></h2>
+<div class="grid">
+<div class="tile best flagged chosen"><label class="shot"><input type="checkbox" data-pick="IMG_0016.HEIC" data-room="NAO_IDENTIFICADO_01" checked><img src="_proxies/IMG_0016.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_0016.HEIC</code><span class="meta">26mm eq · roll +9.5° · splay 14°</span><span class="flag">leaning +9.5°</span><span class="warn">verticals splay 14°</span><span class="why">Captura um passeio de barco com várias pessoas, transmitindo a ideia de atividade em grupo e exploração.</span></span></label><select class="rm" data-room="NAO_IDENTIFICADO_01" data-files="IMG_0016.HEIC"></select></div>
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_2908.HEIC" data-room="NAO_IDENTIFICADO_01"><img src="_proxies/IMG_2908.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_2908.HEIC</code><span class="meta">24mm eq · roll +3.7° · splay 29°</span><span class="flag">verticals splay 29° (three-point perspective)</span><span class="warn">slight lean +3.7°</span></span></label><select class="rm" data-room="NAO_IDENTIFICADO_01" data-files="IMG_2908.HEIC"></select></div>
+<div class="tile best flagged chosen"><label class="shot"><input type="checkbox" data-pick="IMG_2918.HEIC" data-room="NAO_IDENTIFICADO_01" checked><img src="_proxies/IMG_2918.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_2918.HEIC</code><span class="meta">24mm eq · roll +10.5° · splay 6°</span><span class="flag">leaning +10.5°</span><span class="why">Oferece uma perspectiva diferente de um passeio de barco, focando na experiência individual e no cenário.</span></span></label><select class="rm" data-room="NAO_IDENTIFICADO_01" data-files="IMG_2918.HEIC"></select></div>
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_3153.HEIC" data-room="NAO_IDENTIFICADO_01"><img src="_proxies/IMG_3153.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_3153.HEIC</code><span class="meta">77mm eq · roll +24.1° · splay 49°</span><span class="flag">leaning +24.1°</span><span class="flag">verticals splay 49° (three-point perspective)</span></span></label><select class="rm" data-room="NAO_IDENTIFICADO_01" data-files="IMG_3153.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_6069.HEIC" data-room="NAO_IDENTIFICADO_01" checked><img src="_proxies/IMG_6069.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_6069.HEIC</code><span class="meta">35mm eq · roll +0.2° · splay 3°</span><span class="why">Mostra claramente a atividade de remo em um ambiente natural, com boa composição e iluminação.</span></span></label><select class="rm" data-room="NAO_IDENTIFICADO_01" data-files="IMG_6069.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_7887.HEIC" data-room="NAO_IDENTIFICADO_01" checked><img src="_proxies/IMG_7887.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_7887.HEIC</code><span class="meta">26mm eq · roll +1.3° · splay 4°</span><span class="why">Apresenta uma pessoa em um paddleboard, destacando a experiência de lazer e a paisagem aquática.</span></span></label><select class="rm" data-room="NAO_IDENTIFICADO_01" data-files="IMG_7887.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="PISCINA">
+<h1 class="amb">PISCINA<small>hero_outdoor</small></h1>
+<h2 data-room="PISCINA_01"><span>PISCINA_01  ·  unlabelled<b class="fix" title="A imagem mostra uma quadra de vôlei de praia com o mar ao fundo, o que pode ser uma área de lazer externa, mas não se encaixa perfeitamente em nenhuma categoria. PISCINA é a mais próxima para área de lazer externa.">corrected</b></span><small><b class="count" data-for="PISCINA_01">0</b>/1 picked · all it has · 1 photos · 1 angles · hero_outdoor</small></h2>
+<div class="grid">
+<div class="tile best flagged chosen"><label class="shot"><input type="checkbox" data-pick="IMG_6151.HEIC" data-room="PISCINA_01" checked><img src="_proxies/IMG_6151.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_6151.HEIC</code><span class="meta">14mm eq · roll -4.7° · splay 2°</span><span class="flag">14mm equivalent — edge stretching</span><span class="warn">slight lean -4.7°</span><span class="why">A imagem mostra claramente o propósito de lazer da área com as raquetes e bolas na areia, com a rede de vôlei ao fundo.</span></span></label><select class="rm" data-room="PISCINA_01" data-files="IMG_6151.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="QUARTO">
+<h1 class="amb">QUARTO<small>bedroom · 2 rooms</small></h1>
+<h2 data-room="QUARTO_01"><span>QUARTO_01  ·  unlabelled<b class="fix" title="Ambiente com cama de casal, ar condicionado e decoração de quarto.">corrected</b></span><small><b class="count" data-for="QUARTO_01">0</b>/4 picked · 4 photos · 4 angles · bedroom</small></h2>
+<div class="grid">
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_7185.HEIC" data-room="QUARTO_01"><img src="_proxies/IMG_7185.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_7185.HEIC</code><span class="meta">14mm eq · roll +0.5° · splay 27°</span><span class="flag">verticals splay 27° (three-point perspective)</span><span class="flag">14mm equivalent — edge stretching</span></span></label><select class="rm" data-room="QUARTO_01" data-files="IMG_7185.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_7187.HEIC" data-room="QUARTO_01" checked><img src="_proxies/IMG_7187.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_7187.HEIC</code><span class="meta">24mm eq · roll +3.7° · splay 13°</span><span class="warn">slight lean +3.7°</span><span class="warn">verticals splay 13°</span><span class="why">Boa imagem da cama, embora ligeiramente inclinada, que complementa as outras fotos.</span></span></label><select class="rm" data-room="QUARTO_01" data-files="IMG_7187.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_7197.HEIC" data-room="QUARTO_01" checked><img src="_proxies/IMG_7197.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_7197.HEIC</code><span class="meta">24mm eq · roll -1.9° · splay 0°</span><span class="why">Mostra a cama de forma clara e convidativa, com boa iluminação e sem desordem.</span></span></label><select class="rm" data-room="QUARTO_01" data-files="IMG_7197.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9648.HEIC" data-room="QUARTO_01" checked><img src="_proxies/IMG_9648.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9648.HEIC</code><span class="meta">24mm eq · roll +0.9° · splay 10°</span><span class="why">Oferece uma perspectiva diferente da cama, mostrando mais do ambiente e detalhes como a janela e o ar condicionado.</span></span></label><select class="rm" data-room="QUARTO_01" data-files="IMG_9648.HEIC"></select></div>
+</div>
+<h2 data-room="QUARTO_02"><span>QUARTO_02  ·  unlabelled<b class="fix">yours</b></span><small><b class="count" data-for="QUARTO_02">0</b>/3 picked · 3 photos · 3 angles · bedroom</small></h2>
+<div class="grid">
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9660.HEIC" data-room="QUARTO_02" checked><img src="_proxies/IMG_9660.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9660.HEIC</code><span class="meta">24mm eq · roll -3.2° · splay 14°</span><span class="warn">slight lean -3.2°</span><span class="warn">verticals splay 14°</span><span class="why">Mostra a cama e o ambiente do quarto de forma clara, com boa iluminação e organização.</span></span></label><select class="rm" data-room="QUARTO_02" data-files="IMG_9660.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9661.HEIC" data-room="QUARTO_02" checked><img src="_proxies/IMG_9661.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9661.HEIC</code><span class="meta">24mm eq · roll +0.4° · splay 11°</span><span class="why">Oferece uma perspectiva complementar, mostrando a janela e a entrada para o banheiro, com a cama bem apresentada.</span></span></label><select class="rm" data-room="QUARTO_02" data-files="IMG_9661.HEIC"></select></div>
+<div class="tile best flagged chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9692.HEIC" data-room="QUARTO_02" checked><img src="_proxies/IMG_9692.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9692.HEIC</code><span class="meta">24mm eq · roll -4.5° · splay 41°</span><span class="flag">verticals splay 41° (three-point perspective)</span><span class="warn">slight lean -4.5°</span><span class="why">Apresenta o quarto com uma luz dourada interessante, destacando a cama e o tapete, embora com uma leve distorção vertical.</span></span></label><select class="rm" data-room="QUARTO_02" data-files="IMG_9692.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="SALA">
+<h1 class="amb">SALA<small>social</small></h1>
+<h2 data-room="SALA_01"><span>SALA_01  ·  unlabelled<b class="fix" title="O ambiente é amplo, com piso de madeira, mesas e cadeiras, sugerindo um espaço de convivência ou jantar.">corrected</b></span><small><b class="count" data-for="SALA_01">0</b>/5 picked · 8 photos · 8 angles · social</small></h2>
+<div class="grid">
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9432 2.HEIC" data-room="SALA_01" checked><img src="_proxies/IMG_9432 2.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9432 2.HEIC</code><span class="meta">24mm eq · roll +4.1° · splay 14°</span><span class="warn">slight lean +4.1°</span><span class="warn">verticals splay 14°</span><span class="why">Boa visão geral da área de estar, embora ligeiramente inclinada, mostrando a integração com a natureza.</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9432 2.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9435 2.HEIC" data-room="SALA_01" checked><img src="_proxies/IMG_9435 2.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9435 2.HEIC</code><span class="meta">24mm eq · roll -1.0° · splay 8°</span><span class="why">Mostra claramente a área de estar e relaxamento, com a vista para o exterior.</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9435 2.HEIC"></select></div>
+<div class="tile best"><label class="shot"><input type="checkbox" data-pick="IMG_9449 2.HEIC" data-room="SALA_01"><img src="_proxies/IMG_9449 2.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9449 2.HEIC</code><span class="meta">24mm eq · roll +1.1° · splay 14°</span><span class="warn">verticals splay 14°</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9449 2.HEIC"></select></div>
+<div class="tile best"><label class="shot"><input type="checkbox" data-pick="IMG_9458 2.HEIC" data-room="SALA_01"><img src="_proxies/IMG_9458 2.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9458 2.HEIC</code><span class="meta">30mm eq · roll +4.7° · splay 12°</span><span class="warn">slight lean +4.7°</span><span class="warn">verticals splay 12°</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9458 2.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9461 2.HEIC" data-room="SALA_01" checked><img src="_proxies/IMG_9461 2.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9461 2.HEIC</code><span class="meta">30mm eq · roll +0.1° · splay 4°</span><span class="why">Oferece uma perspectiva diferente da área de estar, destacando os detalhes do mobiliário e a iluminação.</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9461 2.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9618.HEIC" data-room="SALA_01" checked><img src="_proxies/IMG_9618.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9618.HEIC</code><span class="meta">24mm eq · roll -0.4° · splay 3°</span><span class="why">Apresenta a sala de jantar e a estrutura geral do espaço, dando uma ideia da dimensão.</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9618.HEIC"></select></div>
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_9620.HEIC" data-room="SALA_01"><img src="_proxies/IMG_9620.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9620.HEIC</code><span class="meta">24mm eq · roll -19.8° · splay 44°</span><span class="flag">leaning -19.8°</span><span class="flag">verticals splay 44° (three-point perspective)</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9620.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9623.HEIC" data-room="SALA_01" checked><img src="_proxies/IMG_9623.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9623.HEIC</code><span class="meta">24mm eq · roll -0.4° · splay 2°</span><span class="why">Mostra a entrada e a escadaria, dando uma noção da circulação e da arquitetura do local.</span></span></label><select class="rm" data-room="SALA_01" data-files="IMG_9623.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="TERRACO">
+<h1 class="amb">TERRACO<small>hero_outdoor</small></h1>
+<h2 data-room="TERRACO_01"><span>TERRACO_01  ·  unlabelled<b class="fix" title="Área externa ampla com mobiliário de estar e vista para a natureza, caracterizando um terraço.">corrected</b></span><small><b class="count" data-for="TERRACO_01">0</b>/2 picked · all it has · 2 photos · 2 angles · hero_outdoor</small></h2>
+<div class="grid">
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9636.HEIC" data-room="TERRACO_01" checked><img src="_proxies/IMG_9636.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9636.HEIC</code><span class="meta">24mm eq · roll -0.9° · splay 2°</span><span class="why">Mostra claramente o terraço como um espaço de lazer e relaxamento, com a rede e a área de estar bem visíveis.</span></span></label><select class="rm" data-room="TERRACO_01" data-files="IMG_9636.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9691.HEIC" data-room="TERRACO_01" checked><img src="_proxies/IMG_9691.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9691.HEIC</code><span class="meta">24mm eq · roll +2.5° · splay 15°</span><span class="warn">verticals splay 15°</span><span class="why">Oferece uma perspectiva complementar do terraço, destacando a iluminação natural e a integração com a vegetação.</span></span></label><select class="rm" data-room="TERRACO_01" data-files="IMG_9691.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="VARANDA">
+<h1 class="amb">VARANDA<small>outdoor_small</small></h1>
+<h2 data-room="VARANDA_01"><span>VARANDA_01  ·  unlabelled<b class="fix" title="A pessoa está sentada em uma varanda com vista para a natureza e redes.">corrected</b></span><small><b class="count" data-for="VARANDA_01">0</b>/3 picked · 3 photos · 3 angles · outdoor_small</small></h2>
+<div class="grid">
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9307 4.HEIC" data-room="VARANDA_01" checked><img src="_proxies/IMG_9307 4.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9307 4.HEIC</code><span class="meta">44mm eq · roll -1.8° · splay 4°</span><span class="why">Mostra o espaço de relaxamento da varanda com as redes e o assento, dando uma boa ideia do seu uso.</span></span></label><select class="rm" data-room="VARANDA_01" data-files="IMG_9307 4.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9326 4.HEIC" data-room="VARANDA_01" checked><img src="_proxies/IMG_9326 4.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9326 4.HEIC</code><span class="meta">84mm eq · roll -0.1° · splay 0°</span><span class="why">Foca em detalhes da varanda, como as redes e a decoração, complementando as outras vistas.</span></span></label><select class="rm" data-room="VARANDA_01" data-files="IMG_9326 4.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9352 4.HEIC" data-room="VARANDA_01" checked><img src="_proxies/IMG_9352 4.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9352 4.HEIC</code><span class="meta">44mm eq · roll -0.9° · splay 0°</span><span class="why">Oferece uma perspectiva externa da varanda, destacando sua integração com a natureza e a arquitetura única.</span></span></label><select class="rm" data-room="VARANDA_01" data-files="IMG_9352 4.HEIC"></select></div>
+</div>
+</section>
+<section data-ambiente="VISTA">
+<h1 class="amb">VISTA<small>hero_outdoor</small></h1>
+<h2 data-room="VISTA_01"><span>VISTA_01  ·  unlabelled<b class="fix" title="A imagem mostra a proa de um barco em um rio com vegetação ao redor.">corrected</b></span><small><b class="count" data-for="VISTA_01">0</b>/5 picked · 7 photos · 7 angles · hero_outdoor</small></h2>
+<div class="grid">
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_2941.HEIC" data-room="VISTA_01"><img src="_proxies/IMG_2941.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_2941.HEIC</code><span class="meta">24mm eq · roll -5.1° · splay 15°</span><span class="flag">leaning -5.1°</span><span class="warn">verticals splay 15°</span></span></label><select class="rm" data-room="VISTA_01" data-files="IMG_2941.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_2946.HEIC" data-room="VISTA_01" checked><img src="_proxies/IMG_2946.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_2946.HEIC</code><span class="meta">24mm eq</span><span class="warn">geometry unmeasurable (0 verticals found)</span><span class="why">Mostra a paisagem e a praia, sugerindo lazer e relaxamento ao ar livre.</span></span></label><select class="rm" data-room="VISTA_01" data-files="IMG_2946.HEIC"></select></div>
+<div class="tile best flagged"><label class="shot"><input type="checkbox" data-pick="IMG_3194.HEIC" data-room="VISTA_01"><img src="_proxies/IMG_3194.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_3194.HEIC</code><span class="meta">24mm eq · roll -2.1° · splay 92°</span><span class="flag">verticals splay 92° (three-point perspective)</span></span></label><select class="rm" data-room="VISTA_01" data-files="IMG_3194.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_3888.HEIC" data-room="VISTA_01" checked><img src="_proxies/IMG_3888.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_3888.HEIC</code><span class="meta">77mm eq</span><span class="why">Apresenta uma vista mais ampla da água e da vegetação, com a proa do barco, evocando a ideia de um passeio ou viagem.</span></span></label><select class="rm" data-room="VISTA_01" data-files="IMG_3888.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_4078.HEIC" data-room="VISTA_01" checked><img src="_proxies/IMG_4078.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_4078.HEIC</code><span class="meta">26mm eq · roll +1.1° · splay 5°</span><span class="why">Apresenta a praia e a vegetação exuberante, transmitindo uma sensação de tranquilidade e imersão na natureza.</span></span></label><select class="rm" data-room="VISTA_01" data-files="IMG_4078.HEIC"></select></div>
+<div class="tile best chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9172.HEIC" data-room="VISTA_01" checked><img src="_proxies/IMG_9172.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9172.HEIC</code><span class="meta">48mm eq</span><span class="warn">geometry unmeasurable (1 verticals found)</span><span class="why">Mostra a praia com alguns elementos de infraestrutura, como postes, sugerindo um local acessível para atividades.</span></span></label><select class="rm" data-room="VISTA_01" data-files="IMG_9172.HEIC"></select></div>
+<div class="tile best flagged chosen"><label class="shot"><input type="checkbox" data-pick="IMG_9584.HEIC" data-room="VISTA_01" checked><img src="_proxies/IMG_9584.jpg" loading="lazy" alt=""><span class="cap"><code>IMG_9584.HEIC</code><span class="meta">14mm eq</span><span class="flag">14mm equivalent — edge stretching</span><span class="warn">geometry unmeasurable (0 verticals found)</span><span class="why">Oferece uma perspectiva diferente da praia e do mar, com a proa do barco adicionando um elemento de exploração.</span></span></label><select class="rm" data-room="VISTA_01" data-files="IMG_9584.HEIC"></select></div>
+</div>
+</section>
+
+<div id="bar">
+  <span id="n">0</span><span>of <b id="cap">40</b> picked</span>
+  <button class="go" onclick="copyPicks()">Copy picks.txt</button>
+  <button onclick="setAll(false)">Clear</button>
+  <button onclick="fillQuota()">Fill to quota</button>
+  <button class="amb" id="cat" onclick="copyCatalog()" hidden></button>
+  <span id="over"></span>
+  <span id="hint">Paste into <code>picks.txt</code> beside this file, then run
+  <code>develop.py</code></span>
+</div>
+
+<script type="application/json" id="payload">{"catalog": "# WC-00660 - Casa MAD Alter \u2014 Ambientes\n\n_Written by `0 - selection/cull.py` on 2026-07-31 02:49. Vocabulary `AMBIENTES.md` `#c2fe74fd`._\n\nWhich room every photograph in this shoot is of, and where that answer came from.\nThe name each picked photo is delivered under is built from this: `SALA` + room\n`01` becomes `SALA_01_0001.jpg`.\n\n**`Ambiente` and `Sala` are yours to correct.** Edit either, re-run `cull.py`, and\nyour value wins. Easier than editing this file by hand: change the room under a\nphotograph in `contact.html` and press **Copy ambientes.md**, which hands you this\nwhole file with the changed cells already rewritten \u2014 paste it back over this one.\n\n- `Ambiente` is *what kind of room* it is. Correcting it turns `Origem` to\n  `manual`, and that room is then never sent to the model again.\n- `Sala` is *which room of that kind* \u2014 the `02` in `QUARTO_02_0001.jpg`. Change\n  it to split one room into two, which is the only way to say that two bedrooms\n  photographing alike are different bedrooms. Each half then gets its own quota.\n  A number you do not touch is recomputed from the grouping, and numbering stays\n  dense: write `05` into a shoot with two bedrooms and you get `QUARTO_02`.\n\n  Changing `Ambiente` discards that row's `Sala`, because a room number only means\n  something inside the ambiente it was handed out in \u2014 a photograph moved from\n  `QUARTO_02` to `SALA` joins `SALA_01`, rather than inventing a `SALA_02`.\n\n`Visto` is output, not input, and editing it does nothing useful. It is what the\nlast run's check actually saw, and it is how your `Ambiente` edit is recognised: a\nrun always writes `Visto` to whatever it just computed, so the two columns agree\nunless *you* pulled them apart. Leave it alone and the difference keeps your\ncorrection alive; overwrite it to match `Ambiente` and the next run will treat the\nroom as unsettled again, which is how you undo a correction.\n\nThe photo number is deliberately not here. The ambiente and the room are facts\nabout the photograph and are settled now; the number can only be handed out once\nthe picks are known, or it would arrive full of gaps where the unpicked photos\nwere. `develop.py` assigns it.\n\n| Origem | Meaning |\n|---|---|\n| `filename` | The photographer's own label, mapped to the vocabulary and confirmed |\n| `vision` | The model disagreed with the label, or there was no label to read |\n| `manual` | You wrote it in this file |\n| `keyword` | Mapped from the label, **not** confirmed \u2014 the vision pass did not run |\n\n48 photo(s) \u2014 45 `vision` \u00b7 3 `manual`\n\n> **Not verified.** The vision pass did not run, so every ambiente below is a keyword guess from the filename. Re-run `cull.py` with a `FAL_KEY` in `_config/.env` to have them checked against the pictures.\n\n\n| Ambiente         | Visto            | Sala | R\u00f3tulo do fot\u00f3grafo | Arquivo           | Origem | Nota                                                                                                                                                                                                                   |\n|------------------|------------------|------|---------------------|-------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|\n| BANHEIRO         | BANHEIRO         | 01   | \u2014                   | `IMG_7190.HEIC`   | vision | A imagem mostra uma pia com um espelho em um ambiente com paredes de madeira, caracterizando um banheiro.                                                                                                              |\n| BANHEIRO         | BANHEIRO         | 01   | \u2014                   | `IMG_9704.HEIC`   | vision | Ambiente com vaso sanit\u00e1rio, pia e bancada, caracterizando um banheiro.                                                                                                                                                |\n| COZINHA          | COZINHA          | 01   | \u2014                   | `IMG_9737.HEIC`   | vision | Ambiente com bancadas, arm\u00e1rios, equipamentos de cozinha e \u00e1rea de preparo de alimentos.                                                                                                                               |\n| FACHADA          | FACHADA          | 01   | \u2014                   | `IMG_5851.HEIC`   | vision | A imagem mostra uma forma\u00e7\u00e3o rochosa natural, n\u00e3o uma fachada de propriedade.                                                                                                                                          |\n| FACHADA          | FACHADA          | 01   | \u2014                   | `IMG_6402.HEIC`   | vision | A imagem mostra uma pessoa em uma praia com o mar ao fundo e um barco, n\u00e3o \u00e9 poss\u00edvel identificar um ambiente espec\u00edfico da propriedade.                                                                               |\n| FACHADA          | FACHADA          | 01   | \u2014                   | `IMG_7075.HEIC`   | vision | A imagem mostra uma faixa de areia com vegeta\u00e7\u00e3o e o mar ao fundo, n\u00e3o \u00e9 poss\u00edvel identificar um ambiente espec\u00edfico da propriedade.                                                                                   |\n| FACHADA          | FACHADA          | 01   | \u2014                   | `IMG_8870.HEIC`   | vision | A imagem mostra uma praia com um barco e uma pessoa caminhando, n\u00e3o \u00e9 poss\u00edvel identificar um ambiente espec\u00edfico da propriedade.                                                                                      |\n| FACHADA          | FACHADA          | 01   | \u2014                   | `IMG_8921.HEIC`   | vision | A imagem mostra uma pessoa sentada em uma faixa de areia com o mar ao fundo, n\u00e3o \u00e9 poss\u00edvel identificar um ambiente espec\u00edfico da propriedade.                                                                         |\n| FACHADA          | FACHADA          | 01   | \u2014                   | `_O4A0203.JPG`    | vision | Vista externa da propriedade com a praia e o mar ao fundo.                                                                                                                                                             |\n| JANTAR           | JANTAR           | 01   | \u2014                   | `IMG_0577.HEIC`   | vision | A imagem mostra uma mesa posta com alimentos, sugerindo um ambiente de refei\u00e7\u00e3o.                                                                                                                                       |\n| JANTAR           | JANTAR           | 01   | \u2014                   | `IMG_0583.HEIC`   | vision | A imagem mostra uma mesa posta com alimentos e uma pessoa, sugerindo um ambiente de refei\u00e7\u00e3o.                                                                                                                          |\n| JANTAR           | JANTAR           | 01   | \u2014                   | `IMG_8953.HEIC`   | vision | A mesa posta com cadeiras sugere um local para refei\u00e7\u00f5es.                                                                                                                                                              |\n| JARDIM           | JARDIM           | 01   | \u2014                   | `IMG_2756.HEIC`   | vision | A imagem mostra uma pessoa em um ambiente aqu\u00e1tico com vegeta\u00e7\u00e3o e um barco ao fundo, n\u00e3o \u00e9 poss\u00edvel identificar um c\u00f4modo espec\u00edfico da lista.                                                                        |\n| JARDIM           | JARDIM           | 01   | \u2014                   | `_O4A0633.JPG`    | vision | Pessoas em um lago com vegeta\u00e7\u00e3o ao redor, sugerindo uma \u00e1rea de lazer natural.                                                                                                                                        |\n| NAO_IDENTIFICADO | NAO_IDENTIFICADO | 01   | \u2014                   | `IMG_0016.HEIC`   | vision | A imagem mostra um barco em um rio com vegeta\u00e7\u00e3o densa ao redor, n\u00e3o \u00e9 poss\u00edvel identificar um c\u00f4modo espec\u00edfico da lista.                                                                                             |\n| NAO_IDENTIFICADO | NAO_IDENTIFICADO | 01   | \u2014                   | `IMG_2908.HEIC`   | vision | A imagem mostra uma pessoa em um barco em um rio com vegeta\u00e7\u00e3o densa ao redor, n\u00e3o \u00e9 poss\u00edvel identificar um c\u00f4modo espec\u00edfico da lista.                                                                               |\n| NAO_IDENTIFICADO | NAO_IDENTIFICADO | 01   | \u2014                   | `IMG_2918.HEIC`   | vision | A imagem mostra uma pessoa em um barco em um rio com vegeta\u00e7\u00e3o densa ao redor, n\u00e3o \u00e9 poss\u00edvel identificar um c\u00f4modo espec\u00edfico da lista.                                                                               |\n| NAO_IDENTIFICADO | NAO_IDENTIFICADO | 01   | \u2014                   | `IMG_3153.HEIC`   | vision | A imagem mostra duas pessoas em pranchas de stand-up paddle em um rio com vegeta\u00e7\u00e3o.                                                                                                                                   |\n| NAO_IDENTIFICADO | NAO_IDENTIFICADO | 01   | \u2014                   | `IMG_6069.HEIC`   | vision | A imagem mostra uma pessoa em um barco em um corpo d'\u00e1gua cercado por vegeta\u00e7\u00e3o, n\u00e3o \u00e9 poss\u00edvel identificar um ambiente espec\u00edfico da propriedade.                                                                     |\n| NAO_IDENTIFICADO | NAO_IDENTIFICADO | 01   | \u2014                   | `IMG_7887.HEIC`   | vision | A imagem mostra uma pessoa em um rio ou lago cercado por \u00e1rvores, n\u00e3o \u00e9 poss\u00edvel identificar um ambiente espec\u00edfico da propriedade.                                                                                    |\n| PISCINA          | PISCINA          | 01   | \u2014                   | `IMG_6151.HEIC`   | vision | A imagem mostra uma quadra de v\u00f4lei de praia com o mar ao fundo, o que pode ser uma \u00e1rea de lazer externa, mas n\u00e3o se encaixa perfeitamente em nenhuma categoria. PISCINA \u00e9 a mais pr\u00f3xima para \u00e1rea de lazer externa. |\n| QUARTO           | QUARTO           | 01   | \u2014                   | `IMG_7185.HEIC`   | vision | A imagem mostra uma cama arrumada em um quarto com paredes de madeira.                                                                                                                                                 |\n| QUARTO           | QUARTO           | 01   | \u2014                   | `IMG_7187.HEIC`   | vision | A imagem mostra uma cama arrumada em um quarto com paredes de madeira.                                                                                                                                                 |\n| QUARTO           | QUARTO           | 01   | \u2014                   | `IMG_7197.HEIC`   | vision | A imagem mostra uma cama arrumada em um quarto com paredes de madeira.                                                                                                                                                 |\n| QUARTO           | QUARTO           | 01   | \u2014                   | `IMG_9648.HEIC`   | vision | Ambiente com cama de casal, ar condicionado e decora\u00e7\u00e3o de quarto.                                                                                                                                                     |\n| QUARTO           | QUARTO           | 02   | \u2014                   | `IMG_9660.HEIC`   | manual | Ambiente com cama de casal, ar condicionado e decora\u00e7\u00e3o de quarto.                                                                                                                                                     |\n| QUARTO           | QUARTO           | 02   | \u2014                   | `IMG_9661.HEIC`   | manual | Ambiente com cama de casal, ar condicionado, janela e acesso a um banheiro.                                                                                                                                            |\n| QUARTO           | QUARTO           | 02   | \u2014                   | `IMG_9692.HEIC`   | manual | Ambiente com cama de casal, ar condicionado e acesso a um banheiro.                                                                                                                                                    |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9432 2.HEIC` | vision | O ambiente possui sof\u00e1s, mesas de centro e um espa\u00e7o amplo para conviv\u00eancia.                                                                                                                                           |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9435 2.HEIC` | vision | O ambiente possui sof\u00e1s, mesas de centro e um espa\u00e7o amplo para conviv\u00eancia.                                                                                                                                           |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9449 2.HEIC` | vision | O ambiente possui sof\u00e1s, mesas de centro e um espa\u00e7o amplo para conviv\u00eancia.                                                                                                                                           |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9458 2.HEIC` | vision | O ambiente possui sof\u00e1s, mesas de centro e um espa\u00e7o amplo para conviv\u00eancia.                                                                                                                                           |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9461 2.HEIC` | vision | O ambiente possui sof\u00e1s, mesas de centro e um espa\u00e7o amplo para conviv\u00eancia.                                                                                                                                           |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9618.HEIC`   | vision | O ambiente \u00e9 amplo, com piso de madeira, mesas e cadeiras, sugerindo um espa\u00e7o de conviv\u00eancia ou jantar.                                                                                                               |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9620.HEIC`   | vision | Espa\u00e7o amplo com mesas e cadeiras, \u00e1rea de estar com rede e decora\u00e7\u00e3o r\u00fastica, sugerindo um espa\u00e7o de conviv\u00eancia.                                                                                                     |\n| SALA             | SALA             | 01   | \u2014                   | `IMG_9623.HEIC`   | vision | Vista da escada e do espa\u00e7o de conviv\u00eancia com mesas e cadeiras, refor\u00e7ando a ideia de um sal\u00e3o principal.                                                                                                             |\n| TERRACO          | TERRACO          | 01   | \u2014                   | `IMG_9636.HEIC`   | vision | \u00c1rea externa ampla com mobili\u00e1rio de estar e vista para a natureza, caracterizando um terra\u00e7o.                                                                                                                         |\n| TERRACO          | TERRACO          | 01   | \u2014                   | `IMG_9691.HEIC`   | vision | \u00c1rea externa com mobili\u00e1rio de estar e vista para a natureza, caracterizando um terra\u00e7o.                                                                                                                               |\n| VARANDA          | VARANDA          | 01   | \u2014                   | `IMG_9307 4.HEIC` | vision | A pessoa est\u00e1 sentada em uma varanda com vista para a natureza e redes.                                                                                                                                                |\n| VARANDA          | VARANDA          | 01   | \u2014                   | `IMG_9326 4.HEIC` | vision | A pessoa est\u00e1 sentada em uma varanda com vista para a natureza e redes.                                                                                                                                                |\n| VARANDA          | VARANDA          | 01   | \u2014                   | `IMG_9352 4.HEIC` | vision | A pessoa est\u00e1 em um n\u00edvel superior de uma estrutura de madeira com vista para a natureza.                                                                                                                              |\n| VISTA            | VISTA            | 01   | \u2014                   | `IMG_2941.HEIC`   | vision | A imagem mostra uma vista de uma praia e um rio, com uma pessoa sentada em um banco ao fundo.                                                                                                                          |\n| VISTA            | VISTA            | 01   | \u2014                   | `IMG_2946.HEIC`   | vision | A imagem mostra uma vista de uma praia e um rio.                                                                                                                                                                       |\n| VISTA            | VISTA            | 01   | \u2014                   | `IMG_3194.HEIC`   | vision | A imagem mostra a proa de um barco se aproximando de uma praia em um rio.                                                                                                                                              |\n| VISTA            | VISTA            | 01   | \u2014                   | `IMG_3888.HEIC`   | vision | A imagem mostra uma pessoa sentada em uma praia, com o mar ao fundo.                                                                                                                                                   |\n| VISTA            | VISTA            | 01   | \u2014                   | `IMG_4078.HEIC`   | vision | A imagem mostra a proa de um barco em um rio com vegeta\u00e7\u00e3o ao redor.                                                                                                                                                   |\n| VISTA            | VISTA            | 01   | \u2014                   | `IMG_9172.HEIC`   | vision | A imagem mostra uma paisagem de praia com cadeiras de descanso e o mar ao fundo.                                                                                                                                       |\n| VISTA            | VISTA            | 01   | \u2014                   | `IMG_9584.HEIC`   | vision | A imagem mostra um barco na \u00e1gua ao p\u00f4r do sol, com uma paisagem de rio e praia.                                                                                                                                       |\n", "slugs": ["FACHADA", "VISTA", "PISCINA", "TERRACO", "JARDIM", "CHURRASQUEIRA", "SALA", "JANTAR", "COZINHA", "SUITE", "QUARTO", "BANHEIRO", "LAVABO", "VARANDA", "ESCRITORIO", "CLOSET", "GARAGEM", "DESPENSA", "AREA_SERVICO", "HALL", "ESCADA", "ACADEMIA", "SALAO_FESTAS", "PLAYGROUND", "PORTARIA", "DETALHE", "NAO_IDENTIFICADO"]}</script>
+
+<script>
+const boxes = () => [...document.querySelectorAll('input[data-pick]')];
+const slotsFor = {};
+document.querySelectorAll('h2 .count').forEach(el => {
+  slotsFor[el.dataset.for] = parseInt(el.parentElement.textContent.split('/')[1]);
+});
+
+function tally() {
+  const per = {};
+  boxes().forEach(b => { if (b.checked) per[b.dataset.room] = (per[b.dataset.room] || 0) + 1; });
+  let over = 0;
+  document.querySelectorAll('h2 .count').forEach(el => {
+    const room = el.dataset.for, n = per[room] || 0;
+    el.textContent = n;
+    const past = n > slotsFor[room];
+    el.classList.toggle('past', past);
+    if (past) over += n - slotsFor[room];
+  });
+  const total = boxes().filter(b => b.checked).length;
+  document.getElementById('n').textContent = total;
+  document.getElementById('over').textContent = over
+    ? over + ' over quota' : '';
+  document.getElementById('over').className = over ? 'past' : '';
+}
+document.addEventListener('change', e => e.target.dataset.pick && tally());
+
+function setAll(v) { boxes().forEach(b => b.checked = v); tally(); }
+
+function fillQuota() {
+  // Top-ranked, unflagged, one per angle, up to each room's share. A starting
+  // point from the measurements alone — it has not looked at the pictures.
+  const used = {};
+  const seen = {};
+  boxes().forEach(b => {
+    const room = b.dataset.room, tile = b.closest('.tile');
+    const key = room + '|' + [...tile.parentElement.children].indexOf(tile);
+    b.checked = false;
+    if (!tile.classList.contains('best')) return;
+    if (tile.classList.contains('flagged')) return;
+    if ((used[room] || 0) >= slotsFor[room]) return;
+    used[room] = (used[room] || 0) + 1;
+    b.checked = true;
+  });
+  tally();
+}
+
+function copyPicks() {
+  // Order follows the page, which is the walkthrough order the photographer
+  // numbered. develop.py keeps it, so this is also the gallery order.
+  const lines = boxes().filter(b => b.checked).map(b => b.dataset.pick);
+  const text = '# picks.txt — one scene per line, in gallery order.\n'
+    + '# A "+" joins the frames of one bracket into a single photo.\n'
+    + '# Edit freely; blank lines and #comments are ignored.\n'
+    + lines.join('\n') + '\n';
+  navigator.clipboard.writeText(text).then(() => {
+    const b = document.querySelector('button.go');
+    b.textContent = lines.length + ' lines copied \u2713';
+    setTimeout(() => b.textContent = 'Copy picks.txt', 1800);
+  });
+}
+
+/* ---------------------------------------------------------------- the rooms
+
+   Reassigning a photograph is the one correction that cannot be made anywhere
+   else: `ambientes.md` can say a photograph is a QUARTO, but only looking at the
+   pictures together tells you *which* QUARTO, and this is the only place they
+   are side by side.
+
+   The page cannot write the file, same as picks.txt. What it emits instead is
+   the catalogue it was handed, with the changed cells rewritten in place — never
+   a document composed here. `ambientes.py` owns that format and a second copy of
+   it in JS would go stale the first time a column moved.                      */
+
+const PAY = JSON.parse(document.getElementById('payload').textContent);
+const sels = () => [...document.querySelectorAll('select.rm')];
+const ORIG = new Map(sels().map(s => [s, s.dataset.room]));
+
+function roomsInPlay() {
+  // Every room heading on the page, plus any invented since load. Ordered, so
+  // the list reads the same on every tile.
+  const out = [...document.querySelectorAll('h2[data-room]')].map(h => h.dataset.room);
+  sels().forEach(s => out.includes(s.dataset.room) || out.push(s.dataset.room));
+  return out;
+}
+
+function nextFree(amb) {
+  // The lowest index this ambiente does not already use. Counting from the rooms
+  // in play rather than from a counter means two photographs sent to
+  // `+ novo QUARTO` land in QUARTO_02 and QUARTO_03 — different rooms, which is
+  // what asking for a new one twice means. To put both in the same second
+  // bedroom, send the first and then pick QUARTO_02 by name for the rest.
+  const used = new Set(roomsInPlay()
+    .map(r => r.match(/^(.*)_(\d{2})$/))
+    .filter(m => m && m[1] === amb).map(m => parseInt(m[2])));
+  let i = 1;
+  while (used.has(i)) i++;
+  return amb + '_' + String(i).padStart(2, '0');
+}
+
+function paint() {
+  const rooms = roomsInPlay();
+  sels().forEach(s => {
+    const here = s.dataset.room;
+    s.innerHTML = '';
+    const g1 = document.createElement('optgroup');
+    g1.label = 'Cômodos desta entrega';
+    rooms.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r; o.textContent = r; o.selected = r === here;
+      g1.appendChild(o);
+    });
+    const g2 = document.createElement('optgroup');
+    g2.label = 'Novo cômodo';
+    PAY.slugs.forEach(a => {
+      const o = document.createElement('option');
+      o.value = 'new:' + a; o.textContent = '+ novo ' + a;
+      g2.appendChild(o);
+    });
+    s.append(g1, g2);
+    const moved = here !== ORIG.get(s);
+    s.classList.toggle('moved', moved);
+    // The checkbox counts against the room the photograph is now in, so the
+    // quota counters follow a move without a re-run.
+    s.parentElement.querySelector('input').dataset.room = here;
+  });
+  const n = sels().filter(s => s.dataset.room !== ORIG.get(s)).length;
+  const btn = document.getElementById('cat');
+  btn.hidden = !n;
+  btn.textContent = 'Copy ambientes.md (' + n + ')';
+  tally();
+}
+
+document.addEventListener('change', e => {
+  const s = e.target;
+  if (!s.classList || !s.classList.contains('rm')) return;
+  s.dataset.room = s.value.startsWith('new:')
+    ? nextFree(s.value.slice(4)) : s.value;
+  paint();
+});
+
+function copyCatalog() {
+  // Where each file is going now. Keyed by the name as the catalogue writes it,
+  // and a bracket's frames all move together because they are one photograph.
+  const want = {};
+  sels().forEach(s => s.dataset.files.split('+')
+    .forEach(f => want[f.trim()] = s.dataset.room));
+
+  let changed = 0;
+  const out = PAY.catalog.split('\n').map(line => {
+    if (!line.startsWith('|') || !line.endsWith('|')) return line;
+    const cells = line.slice(1, -1).split('|');
+    if (cells.length !== 7) return line;
+    if (cells.every(c => /^[-: ]*$/.test(c))) return line;   // separator row
+    const file = cells[4].trim().replace(/^`|`$/g, '');
+    const to = want[file];
+    if (!to) return line;
+    const m = to.match(/^(.*)_(\d{2})$/);
+    if (!m || (cells[0].trim() === m[1] && cells[2].trim() === m[2])) return line;
+    // Cell 1 is `Visto` and is deliberately untouched: it records what the last
+    // *check* saw, and this is not a check. Leaving it is what makes the gap
+    // between the two columns proof that the change was yours.
+    const put = (i, v) =>
+      cells[i] = ' ' + v.padEnd(Math.max(cells[i].length - 2, v.length)) + ' ';
+    put(0, m[1]); put(2, m[2]); put(5, 'manual');
+    changed++;
+    return '|' + cells.join('|') + '|';
+  }).join('\n');
+
+  navigator.clipboard.writeText(out).then(() => {
+    const b = document.getElementById('cat');
+    const was = b.textContent;
+    b.textContent = changed + ' row(s) copied \u2713 — paste over ambientes.md';
+    setTimeout(() => b.textContent = was, 2600);
+  });
+}
+
+paint();
+</script>

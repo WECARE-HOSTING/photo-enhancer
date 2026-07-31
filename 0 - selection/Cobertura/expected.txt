@@ -1,0 +1,312 @@
+# What Google Drive itself said is in the folder, captured 2026-07-30 by
+#   gdown --folder --json '<link>'
+# One path per line. fetch.py --expect-list checks arrivals against this
+# by NAME, so it can say which files are missing instead of just how many.
+
+1_Imóvel/10_Área de Serviço_1.JPG
+1_Imóvel/10_Área de Serviço_2.JPG
+1_Imóvel/10_Área de Serviço_3.JPG
+1_Imóvel/10_Área de Serviço_4.JPG
+1_Imóvel/10_Área de Serviço_5.JPG
+1_Imóvel/10_Área de Serviço_6.JPG
+1_Imóvel/11_Sacada_1.JPG
+1_Imóvel/11_Sacada_2.JPG
+1_Imóvel/11_Sacada_3.JPG
+1_Imóvel/11_Sacada_4.JPG
+1_Imóvel/12_Quarto 1_1.JPG
+1_Imóvel/12_Quarto 1_10.JPG
+1_Imóvel/12_Quarto 1_11.JPG
+1_Imóvel/12_Quarto 1_12.JPG
+1_Imóvel/12_Quarto 1_13.JPG
+1_Imóvel/12_Quarto 1_14.JPG
+1_Imóvel/12_Quarto 1_2.JPG
+1_Imóvel/12_Quarto 1_3.JPG
+1_Imóvel/12_Quarto 1_4.JPG
+1_Imóvel/12_Quarto 1_5.JPG
+1_Imóvel/12_Quarto 1_6.JPG
+1_Imóvel/12_Quarto 1_7.JPG
+1_Imóvel/12_Quarto 1_8.JPG
+1_Imóvel/12_Quarto 1_9.JPG
+1_Imóvel/13_Suíte 2_1.JPG
+1_Imóvel/13_Suíte 2_2.JPG
+1_Imóvel/13_Suíte 2_3.JPG
+1_Imóvel/13_Suíte 2_4.JPG
+1_Imóvel/13_Suíte 2_5.JPG
+1_Imóvel/13_Suíte 2_6.JPG
+1_Imóvel/13_Suíte 2_7.JPG
+1_Imóvel/14_Banheiro Suíte 2_1.JPG
+1_Imóvel/14_Banheiro Suíte 2_2.JPG
+1_Imóvel/14_Banheiro Suíte 2_3.JPG
+1_Imóvel/14_Banheiro Suíte 2_4.JPG
+1_Imóvel/14_Banheiro Suíte 2_5.JPG
+1_Imóvel/14_Banheiro Suíte 2_6.JPG
+1_Imóvel/15_Banheiro Suíte 3_1.JPG
+1_Imóvel/15_Banheiro Suíte 3_2.JPG
+1_Imóvel/15_Banheiro Suíte 3_3.JPG
+1_Imóvel/15_Banheiro Suíte 3_4.JPG
+1_Imóvel/15_Banheiro Suíte 3_5.JPG
+1_Imóvel/15_Banheiro Suíte 3_6.JPG
+1_Imóvel/15_Banheiro Suíte 3_7.JPG
+1_Imóvel/15_Suíte 3_1.JPG
+1_Imóvel/15_Suíte 3_10.JPG
+1_Imóvel/15_Suíte 3_11.JPG
+1_Imóvel/15_Suíte 3_12.JPG
+1_Imóvel/15_Suíte 3_13.JPG
+1_Imóvel/15_Suíte 3_2.JPG
+1_Imóvel/15_Suíte 3_3.JPG
+1_Imóvel/15_Suíte 3_4.JPG
+1_Imóvel/15_Suíte 3_5.JPG
+1_Imóvel/15_Suíte 3_6.JPG
+1_Imóvel/15_Suíte 3_7.JPG
+1_Imóvel/15_Suíte 3_8.JPG
+1_Imóvel/15_Suíte 3_9.JPG
+1_Imóvel/16_Banheiro_1.JPG
+1_Imóvel/16_Banheiro_10.JPG
+1_Imóvel/16_Banheiro_11.JPG
+1_Imóvel/16_Banheiro_2.JPG
+1_Imóvel/16_Banheiro_3.JPG
+1_Imóvel/16_Banheiro_4.JPG
+1_Imóvel/16_Banheiro_5.JPG
+1_Imóvel/16_Banheiro_6.JPG
+1_Imóvel/16_Banheiro_7.JPG
+1_Imóvel/16_Banheiro_8.JPG
+1_Imóvel/16_Banheiro_9.JPG
+1_Imóvel/17_Porta_1.JPG
+1_Imóvel/17_Porta_2.JPG
+1_Imóvel/17_Porta_3.JPG
+1_Imóvel/1_Cobertura_1.JPG
+1_Imóvel/1_Cobertura_10.jpg
+1_Imóvel/1_Cobertura_11.JPG
+1_Imóvel/1_Cobertura_11b.JPG
+1_Imóvel/1_Cobertura_12.JPG
+1_Imóvel/1_Cobertura_13.JPG
+1_Imóvel/1_Cobertura_14.JPG
+1_Imóvel/1_Cobertura_15.JPG
+1_Imóvel/1_Cobertura_16.JPG
+1_Imóvel/1_Cobertura_17.JPG
+1_Imóvel/1_Cobertura_18.JPG
+1_Imóvel/1_Cobertura_19.JPG
+1_Imóvel/1_Cobertura_2.JPG
+1_Imóvel/1_Cobertura_20.JPG
+1_Imóvel/1_Cobertura_21.JPG
+1_Imóvel/1_Cobertura_22.JPG
+1_Imóvel/1_Cobertura_23.JPG
+1_Imóvel/1_Cobertura_24.JPG
+1_Imóvel/1_Cobertura_25.JPG
+1_Imóvel/1_Cobertura_26.JPG
+1_Imóvel/1_Cobertura_27.JPG
+1_Imóvel/1_Cobertura_28.JPG
+1_Imóvel/1_Cobertura_29.JPG
+1_Imóvel/1_Cobertura_2b.JPG
+1_Imóvel/1_Cobertura_3.JPG
+1_Imóvel/1_Cobertura_30.JPG
+1_Imóvel/1_Cobertura_31.JPG
+1_Imóvel/1_Cobertura_32.JPG
+1_Imóvel/1_Cobertura_33.JPG
+1_Imóvel/1_Cobertura_34.JPG
+1_Imóvel/1_Cobertura_35.JPG
+1_Imóvel/1_Cobertura_36.JPG
+1_Imóvel/1_Cobertura_37.JPG
+1_Imóvel/1_Cobertura_38.JPG
+1_Imóvel/1_Cobertura_39.JPG
+1_Imóvel/1_Cobertura_4.JPG
+1_Imóvel/1_Cobertura_40.JPG
+1_Imóvel/1_Cobertura_41.JPG
+1_Imóvel/1_Cobertura_42.JPG
+1_Imóvel/1_Cobertura_5.JPG
+1_Imóvel/1_Cobertura_6.JPG
+1_Imóvel/1_Cobertura_7.JPG
+1_Imóvel/1_Cobertura_8.JPG
+1_Imóvel/1_Cobertura_9.JPG
+1_Imóvel/2_Sala Cobertura_1.JPG
+1_Imóvel/2_Sala Cobertura_10.JPG
+1_Imóvel/2_Sala Cobertura_11.JPG
+1_Imóvel/2_Sala Cobertura_12.JPG
+1_Imóvel/2_Sala Cobertura_13.JPG
+1_Imóvel/2_Sala Cobertura_14.JPG
+1_Imóvel/2_Sala Cobertura_15.JPG
+1_Imóvel/2_Sala Cobertura_16.JPG
+1_Imóvel/2_Sala Cobertura_17.JPG
+1_Imóvel/2_Sala Cobertura_18.JPG
+1_Imóvel/2_Sala Cobertura_19.JPG
+1_Imóvel/2_Sala Cobertura_2.JPG
+1_Imóvel/2_Sala Cobertura_20.JPG
+1_Imóvel/2_Sala Cobertura_21.JPG
+1_Imóvel/2_Sala Cobertura_22.JPG
+1_Imóvel/2_Sala Cobertura_23.JPG
+1_Imóvel/2_Sala Cobertura_24.JPG
+1_Imóvel/2_Sala Cobertura_25.JPG
+1_Imóvel/2_Sala Cobertura_26.JPG
+1_Imóvel/2_Sala Cobertura_27.JPG
+1_Imóvel/2_Sala Cobertura_28.JPG
+1_Imóvel/2_Sala Cobertura_29.JPG
+1_Imóvel/2_Sala Cobertura_3.JPG
+1_Imóvel/2_Sala Cobertura_30.JPG
+1_Imóvel/2_Sala Cobertura_31.JPG
+1_Imóvel/2_Sala Cobertura_32.JPG
+1_Imóvel/2_Sala Cobertura_33.JPG
+1_Imóvel/2_Sala Cobertura_34.JPG
+1_Imóvel/2_Sala Cobertura_35.jpg
+1_Imóvel/2_Sala Cobertura_36.JPG
+1_Imóvel/2_Sala Cobertura_37.JPG
+1_Imóvel/2_Sala Cobertura_38.JPG
+1_Imóvel/2_Sala Cobertura_39.JPG
+1_Imóvel/2_Sala Cobertura_4.JPG
+1_Imóvel/2_Sala Cobertura_40.JPG
+1_Imóvel/2_Sala Cobertura_41.JPG
+1_Imóvel/2_Sala Cobertura_42.JPG
+1_Imóvel/2_Sala Cobertura_43.JPG
+1_Imóvel/2_Sala Cobertura_44.JPG
+1_Imóvel/2_Sala Cobertura_45.JPG
+1_Imóvel/2_Sala Cobertura_46.JPG
+1_Imóvel/2_Sala Cobertura_47.JPG
+1_Imóvel/2_Sala Cobertura_48.JPG
+1_Imóvel/2_Sala Cobertura_49.JPG
+1_Imóvel/2_Sala Cobertura_5.JPG
+1_Imóvel/2_Sala Cobertura_50.JPG
+1_Imóvel/2_Sala Cobertura_51.JPG
+1_Imóvel/2_Sala Cobertura_52.JPG
+1_Imóvel/2_Sala Cobertura_53.JPG
+1_Imóvel/2_Sala Cobertura_54.JPG
+1_Imóvel/2_Sala Cobertura_55.JPG
+1_Imóvel/2_Sala Cobertura_6.JPG
+1_Imóvel/2_Sala Cobertura_7.JPG
+1_Imóvel/2_Sala Cobertura_8.JPG
+1_Imóvel/2_Sala Cobertura_9.JPG
+1_Imóvel/3_Lavabo Cobertura_1.JPG
+1_Imóvel/3_Lavabo Cobertura_2.JPG
+1_Imóvel/3_Lavabo Cobertura_3.JPG
+1_Imóvel/3_Lavabo Cobertura_4.JPG
+1_Imóvel/3_Lavabo Cobertura_5.JPG
+1_Imóvel/3_Lavabo Cobertura_6.JPG
+1_Imóvel/3_Lavabo Cobertura_7.JPG
+1_Imóvel/4_Suíte 1_1.JPG
+1_Imóvel/4_Suíte 1_10.JPG
+1_Imóvel/4_Suíte 1_11.JPG
+1_Imóvel/4_Suíte 1_12.JPG
+1_Imóvel/4_Suíte 1_13.JPG
+1_Imóvel/4_Suíte 1_14.JPG
+1_Imóvel/4_Suíte 1_15.JPG
+1_Imóvel/4_Suíte 1_16.JPG
+1_Imóvel/4_Suíte 1_17.JPG
+1_Imóvel/4_Suíte 1_18.JPG
+1_Imóvel/4_Suíte 1_19.JPG
+1_Imóvel/4_Suíte 1_2.JPG
+1_Imóvel/4_Suíte 1_20.JPG
+1_Imóvel/4_Suíte 1_21.JPG
+1_Imóvel/4_Suíte 1_23.JPG
+1_Imóvel/4_Suíte 1_24.JPG
+1_Imóvel/4_Suíte 1_3.JPG
+1_Imóvel/4_Suíte 1_4.JPG
+1_Imóvel/4_Suíte 1_5.JPG
+1_Imóvel/4_Suíte 1_6.JPG
+1_Imóvel/4_Suíte 1_7.JPG
+1_Imóvel/4_Suíte 1_8.JPG
+1_Imóvel/4_Suíte 1_9.JPG
+1_Imóvel/5_Banheiro Suíte 1_1.JPG
+1_Imóvel/5_Banheiro Suíte 1_10.JPG
+1_Imóvel/5_Banheiro Suíte 1_11.JPG
+1_Imóvel/5_Banheiro Suíte 1_12.JPG
+1_Imóvel/5_Banheiro Suíte 1_13.JPG
+1_Imóvel/5_Banheiro Suíte 1_14.JPG
+1_Imóvel/5_Banheiro Suíte 1_15.JPG
+1_Imóvel/5_Banheiro Suíte 1_16.JPG
+1_Imóvel/5_Banheiro Suíte 1_2.JPG
+1_Imóvel/5_Banheiro Suíte 1_3.JPG
+1_Imóvel/5_Banheiro Suíte 1_4.JPG
+1_Imóvel/5_Banheiro Suíte 1_5.JPG
+1_Imóvel/5_Banheiro Suíte 1_6.JPG
+1_Imóvel/5_Banheiro Suíte 1_7.JPG
+1_Imóvel/5_Banheiro Suíte 1_8.JPG
+1_Imóvel/5_Banheiro Suíte 1_9.JPG
+1_Imóvel/6_Escada_1.JPG
+1_Imóvel/6_Escada_2.JPG
+1_Imóvel/7_Sala_1.JPG
+1_Imóvel/7_Sala_10.JPG
+1_Imóvel/7_Sala_11.JPG
+1_Imóvel/7_Sala_12.jpg
+1_Imóvel/7_Sala_13.JPG
+1_Imóvel/7_Sala_14.JPG
+1_Imóvel/7_Sala_15.JPG
+1_Imóvel/7_Sala_16.JPG
+1_Imóvel/7_Sala_17.JPG
+1_Imóvel/7_Sala_18.JPG
+1_Imóvel/7_Sala_19.JPG
+1_Imóvel/7_Sala_2.JPG
+1_Imóvel/7_Sala_20.JPG
+1_Imóvel/7_Sala_21.JPG
+1_Imóvel/7_Sala_3.JPG
+1_Imóvel/7_Sala_4.JPG
+1_Imóvel/7_Sala_5.JPG
+1_Imóvel/7_Sala_6.JPG
+1_Imóvel/7_Sala_7.JPG
+1_Imóvel/7_Sala_8.JPG
+1_Imóvel/7_Sala_9.JPG
+1_Imóvel/8_Cozinha_1.JPG
+1_Imóvel/8_Cozinha_10.JPG
+1_Imóvel/8_Cozinha_11.JPG
+1_Imóvel/8_Cozinha_12.JPG
+1_Imóvel/8_Cozinha_13.JPG
+1_Imóvel/8_Cozinha_14.JPG
+1_Imóvel/8_Cozinha_15.JPG
+1_Imóvel/8_Cozinha_16.JPG
+1_Imóvel/8_Cozinha_17.JPG
+1_Imóvel/8_Cozinha_18.jpg
+1_Imóvel/8_Cozinha_19.JPG
+1_Imóvel/8_Cozinha_2.JPG
+1_Imóvel/8_Cozinha_20.JPG
+1_Imóvel/8_Cozinha_21.JPG
+1_Imóvel/8_Cozinha_22.JPG
+1_Imóvel/8_Cozinha_23.JPG
+1_Imóvel/8_Cozinha_24.JPG
+1_Imóvel/8_Cozinha_25.jpg
+1_Imóvel/8_Cozinha_26.JPG
+1_Imóvel/8_Cozinha_27.JPG
+1_Imóvel/8_Cozinha_28.JPG
+1_Imóvel/8_Cozinha_29.JPG
+1_Imóvel/8_Cozinha_3.JPG
+1_Imóvel/8_Cozinha_30.JPG
+1_Imóvel/8_Cozinha_31.JPG
+1_Imóvel/8_Cozinha_32.JPG
+1_Imóvel/8_Cozinha_4.JPG
+1_Imóvel/8_Cozinha_5.JPG
+1_Imóvel/8_Cozinha_6.JPG
+1_Imóvel/8_Cozinha_7.JPG
+1_Imóvel/8_Cozinha_8.JPG
+1_Imóvel/8_Cozinha_9.JPG
+1_Imóvel/9_Copa_1.JPG
+1_Imóvel/9_Copa_2.JPG
+1_Imóvel/9_Copa_3.JPG
+1_Imóvel/9_Copa_4.JPG
+1_Imóvel/9_Copa_5.JPG
+1_Imóvel/9_Copa_6.JPG
+1_Imóvel/9_Copa_7.JPG
+1_Imóvel/9_Copa_8.JPG
+3_Condomínio/IMG_7039.JPG
+3_Condomínio/IMG_7040.JPG
+3_Condomínio/IMG_7041.JPG
+3_Condomínio/IMG_7042.JPG
+3_Condomínio/IMG_7043.JPG
+3_Condomínio/IMG_7044.JPG
+3_Condomínio/IMG_7045.JPG
+3_Condomínio/IMG_7046.JPG
+3_Condomínio/IMG_7450.JPG
+3_Condomínio/IMG_7451.JPG
+3_Condomínio/IMG_7452.JPG
+3_Condomínio/IMG_7453.JPG
+3_Condomínio/IMG_7455.JPG
+3_Condomínio/IMG_7456.JPG
+3_Condomínio/IMG_7457.JPG
+3_Condomínio/IMG_7458.JPG
+3_Condomínio/IMG_7459.JPG
+3_Condomínio/IMG_7460.JPG
+3_Condomínio/IMG_7461.JPG
+3_Condomínio/IMG_7462.JPG
+3_Condomínio/IMG_7463.JPG
+3_Condomínio/IMG_7464.JPG
+3_Condomínio/IMG_7465.JPG
+3_Condomínio/IMG_7466.JPG
+3_Condomínio/IMG_7467.JPG
+3_Condomínio/IMG_7468.JPG
+3_Condomínio/IMG_7469.JPG
+3_Condomínio/IMG_7470.JPG

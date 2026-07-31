@@ -1,0 +1,66 @@
+# picks.txt — one scene per line, in gallery order.
+# A "+" joins the frames of one bracket into a single photo.
+# Edit freely; blank lines and #comments are ignored.
+1_Cobertura_11.JPG
+1_Cobertura_12.JPG
+1_Cobertura_14.JPG
+1_Cobertura_29.JPG
+1_Cobertura_4.JPG
+1_Cobertura_40.JPG
+1_Cobertura_8.JPG
+2_Sala Cobertura_11.JPG
+2_Sala Cobertura_13.JPG
+2_Sala Cobertura_3.JPG
+2_Sala Cobertura_30.JPG
+2_Sala Cobertura_37.JPG
+2_Sala Cobertura_4.JPG
+2_Sala Cobertura_49.JPG
+2_Sala Cobertura_50.JPG
+2_Sala Cobertura_52.JPG
+3_Lavabo Cobertura_4.JPG
+4_Suíte 1_1.JPG
+4_Suíte 1_15.JPG
+4_Suíte 1_2.JPG
+5_Banheiro Suíte 1_11.JPG
+5_Banheiro Suíte 1_3.JPG
+5_Banheiro Suíte 1_7.JPG
+6_Escada_2.JPG
+7_Sala_1.JPG
+7_Sala_12.jpg
+7_Sala_17.JPG
+7_Sala_4.JPG
+8_Cozinha_1.JPG
+8_Cozinha_10.JPG
+8_Cozinha_17.JPG
+8_Cozinha_19.JPG
+8_Cozinha_22.JPG
+8_Cozinha_5.JPG
+9_Copa_2.JPG
+9_Copa_3.JPG
+10_Área de Serviço_3.JPG
+11_Sacada_1.JPG
+11_Sacada_2.JPG
+12_Quarto 1_2.JPG
+12_Quarto 1_10.JPG
+12_Quarto 1_14.JPG
+13_Suíte 2_1.JPG
+13_Suíte 2_3.JPG
+14_Banheiro Suíte 2_1.JPG
+14_Banheiro Suíte 2_3.JPG
+15_Banheiro Suíte 3_1.JPG
+15_Banheiro Suíte 3_5.JPG
+15_Suíte 3_1.JPG
+15_Suíte 3_13.JPG
+15_Suíte 3_3.JPG
+15_Suíte 3_5.JPG
+15_Suíte 3_8.JPG
+15_Suíte 3_9.JPG
+16_Banheiro_1.JPG
+16_Banheiro_2.JPG
+16_Banheiro_5.JPG
+IMG_7041.JPG
+IMG_7046.JPG
+IMG_7452.JPG
+IMG_7457.JPG
+IMG_7462.JPG
+IMG_7463.JPG

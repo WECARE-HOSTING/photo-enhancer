@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 0 240 272" width="240" height="272" role="img" aria-label="wecare hosting">
+  <g transform="translate(161.6,8) scale(1.6)">
+    <path d="M24 61.5 C13.5 45 4.5 35.2 4.5 22 A19.5 19.5 0 1 1 43.5 22 C43.5 35.2 34.5 45 24 61.5 Z" fill="none" stroke="#0C2330" stroke-width="2.6" stroke-linejoin="round"></path>
+    <path d="M12.5 25.5 L24 13.5 L35.5 25.5" fill="none" stroke="#B79152" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path d="M15.5 24.7 V33 H32.5 V24.7" fill="none" stroke="#0C2330" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+  </g>
+  <line x1="162" y1="132" x2="238" y2="132" stroke="#B79152" stroke-width="1.4"></line>
+  <text x="200" y="196" text-anchor="middle" font-family="Inter, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-weight="600" font-size="58" letter-spacing="-1" fill="#0C2330">wecare</text>
+  <text x="200" y="252" text-anchor="middle" font-family="Inter, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-weight="400" font-size="58" letter-spacing="-1" fill="#0C2330">hosting<tspan font-weight="600" fill="#B79152">.</tspan></text>
+</svg>

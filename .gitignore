@@ -1,0 +1,28 @@
+# Credentials and the environment
+_config/.env
+_config/.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Not ours — an unrelated mcp-zapsign-server writes here because its cwd
+# happens to be this folder. Nothing in this project reads or writes it.
+logs/
+
+# Photographs. Git is the undo button for the code and the docs, not a backup
+# for 4 GB of camera originals — that is Time Machine's job.
+0 - selection/*/source/
+0 - selection/*/_proxies/
+0 - selection/*/developed/
+0 - selection/drop/*
+!0 - selection/drop/.gitkeep
+
+# Jobs in flight, and the archive. A job's folder location is its status;
+# committing that would make git a second, disagreeing source of truth.
+1 - edit/Job_*/
+2 - marca dagua/Job_*/
+3 - completed/
