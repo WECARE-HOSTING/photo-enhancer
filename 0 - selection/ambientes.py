@@ -18,8 +18,8 @@ The name it produces travels untouched from here to `3 - completed/`:
     NN        which physical room of that kind, in walkthrough order
     NNNN      the photo within that room, assigned once the picks are known
 
-Nothing downstream renames it. `1 - input/organize.py` only groups photos into a
-job, and `2 - in progress/enhance.py` only appends `_edit`.
+Nothing downstream renames it. `1 - edit/enhance.py` only appends `_edit` and
+`2 - marca dagua/marca.py` only `_final`.
 """
 
 from __future__ import annotations
@@ -45,13 +45,20 @@ PROMPT_END = "===== END OF AMBIENTES"
 SLUG_RE = re.compile(r"^[A-Z][A-Z_]*$")
 NAME_RE = re.compile(r"^(?P<ambiente>[A-Z][A-Z_]*)_(?P<sala>\d{2})_(?P<n>\d{4})$")
 
-# Copies of NAME_RE live in `1 - input/organize.py` and `2 - in progress/review.py`
-# because those folders cannot import across a sibling directory whose name has
-# spaces in it. `_dependencies.md` lists all three sites — grep for `NAME_RE`
-# before changing the shape of a name.
+# This is the only NAME_RE in the project. There used to be three — copies in
+# `organize.py` and `review.py`, justified by "a sibling folder whose name has
+# spaces cannot be imported", which was never true: every stage already inserts
+# a path and imports across. Keeping it that way is a one-line grep:
+#     grep -rn "NAME_RE" --include=*.py .
 
 UNKNOWN = "NAO_IDENTIFICADO"
 CATALOG_NAME = "ambientes.md"
+
+# Suffixes a result carries, longest first so `_edit_1` is tried before `_edit`.
+# Kept in step with `_config/stage.py`'s RESULT_MARKERS: a stem this fails to
+# strip returns None from parse_name, and every such photo collapses into one
+# unnamed section on the gate page.
+RESULT_SUFFIX_RE = re.compile(r"(_edit|_final|_enhanced)(_\d+)?$")
 
 # A property-code row in AMBIENTES.md, written the way a person describes the
 # format rather than as a regex: `WC-N`, where `N` stands for the digits. Two
@@ -91,13 +98,12 @@ def fold_name(name: str) -> str:
 def parse_name(stem: str) -> "tuple[str, int, int] | None":
     """`QUARTO_02_0001` -> `("QUARTO", 2, 1)`. None when it is not one of ours.
 
-    Tolerates the `_edit` a result carries, so a caller can ask what ambiente an
-    enhanced file belongs to without stripping the suffix first.
+    Tolerates any result suffix, so a caller can ask what ambiente an enhanced or
+    watermarked file belongs to without stripping it first. This used to know
+    about `_edit` only; a `_final.jpg` returned None and the gate page put every
+    photo in one section headed `—`.
     """
-    if stem.endswith("_edit"):
-        stem = stem[:-5]
-    elif m := re.search(r"_edit_\d+$", stem):
-        stem = stem[:m.start()]
+    stem = RESULT_SUFFIX_RE.sub("", stem)
     if m := NAME_RE.match(stem):
         return m.group("ambiente"), int(m.group("sala")), int(m.group("n"))
     return None
@@ -325,7 +331,7 @@ The name each picked photo is delivered under is built from this: `SALA` + room
 
 **`Ambiente` and `Sala` are yours to correct.** Edit either, re-run `cull.py`, and
 your value wins. Easier than editing this file by hand: change the room under a
-photograph in `contact.html` and press **Copy ambientes.md**, which hands you this
+photograph in `review-selection.html` and press **Copy ambientes.md**, which hands you this
 whole file with the changed cells already rewritten — paste it back over this one.
 
 - `Ambiente` is *what kind of room* it is. Correcting it turns `Origem` to

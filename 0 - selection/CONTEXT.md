@@ -11,7 +11,7 @@ folder of RAW, 300 JPEGs
 **Process:** fetch and verify → profile → proxies and measurements → **name every
 room and check the name against the picture** → quota per room → a vision model
 proposes the picks → you decide → develop the picks
-**Output:** `1 - input/<shoot>/` holding `SALA_01_0001.jpg` … — the names the
+**Output:** `1 - edit/Job_NNNN/` holding `SALA_01_0001.jpg` … — the names the
 photos keep for the rest of their lives
 
 ## Three things that are true here and nowhere else
@@ -19,14 +19,15 @@ photos keep for the rest of their lives
 The other three folders taught you a shape. This one breaks it, deliberately, in
 three ways. Reading them as mistakes will cost you work.
 
-**1. This folder receives and keeps. It does not consume and empty.** `1 - input/`
-is empty after it runs; a shoot folder here holds its 3.7 GB of originals
-indefinitely, because that is the only thing a re-pick needs. Only the ~50 chosen
-photos leave.
+**1. This folder receives and keeps. It does not consume and empty.** The other
+three pass a `Job_NNNN/` along and are empty again; a shoot folder here holds its
+3.7 GB of originals until you deliberately purge it. Only the ~50 chosen photos
+leave as a job — but every photograph gets developed, and the rest wait in
+`developed/` for the archive to collect them.
 
 **2. There is a mandatory human gate in the middle.** The rest of the pipeline
 runs straight through — that is the whole point of `CLAUDE.md`'s "run them
-straight through". This stage stops at `contact.html` and waits for you. Nothing
+straight through". This stage stops at `review-selection.html` and waits for you. Nothing
 downstream can proceed without a `picks.txt`, and nothing here will invent one.
 
 **3. Your picks are final.** `develop.py` does not re-apply the quota, drop a
@@ -34,9 +35,9 @@ flagged frame, or reconsider. `cull.py` had its say on the contact sheet and los
 the argument the moment you edited the list.
 
 **4. This is where a photo gets its name, and the name never changes again.** It
-used to be `1 - input/`'s job, as `Photo_0001.jpg`. Now the room is in the name —
-`QUARTO_02_0001.jpg` — and nothing downstream renames it: `organize.py` only
-gathers photos into a job, and `enhance.py` only appends `_edit`. That makes the
+used to be a downstream job, as `Photo_0001.jpg`. Now the room is in the name —
+`QUARTO_02_0001.jpg` — and nothing downstream renames it: `enhance.py` only
+appends `_edit` and `marca.py` only `_final`. That makes the
 naming decisions taken here visible in every folder the photo passes through, and
 it makes getting one wrong visible too, which is why they are checked.
 
@@ -56,23 +57,24 @@ it makes getting one wrong visible too, which is why they are checked.
 #     over that file, and re-run. Free: the naming pass is already settled.
 ./_config/.venv/bin/python "0 - selection/cull.py" "0 - selection/Cobertura" --vision --no-classify
 
-# 3. open contact.html, tick, press "Copy picks.txt", paste into picks.txt
+# 3. open review-selection.html, tick, press "Copiar picks", paste into picks.txt
 
-# 4. develop the picks into a drop 1 - input/ already understands
+# 4. mint the job: develop the picks into 1 - edit/Job_NNNN/, and the rest
+#    into developed/ for the archive to collect later
 ./_config/.venv/bin/python "0 - selection/develop.py" "0 - selection/Cobertura"
 
-# 5. from here it is the pipeline you already know
-./_config/.venv/bin/python "1 - input/organize.py"
-./_config/.venv/bin/python "2 - in progress/batch.py"
-#    then look at the job's review.html and approve it:
-./_config/.venv/bin/python "2 - in progress/batch.py" --approve
+# 5. the API stage, then the mark, each with its own gate
+./_config/.venv/bin/python "1 - edit/batch.py"
+./_config/.venv/bin/python "2 - marca dagua/batch.py"
 ```
 
 **Quote every path** — the folder names contain spaces.
 
-An already-culled delivery of 30–60 photos does not need this stage at all. Drop
-it straight into `1 - input/` as before. `cull.py` will tell you if you were
-wrong (see "Type A" below).
+**Every delivery comes in through `drop/`, including one that is already
+curated.** There is no side door any more. A finished selection of 30–60 photos
+still runs `fetch.py` and `cull.py`; `cull.py` recognises it (see "Type A"
+below), cuts nothing, and pre-ticks the sheet, so the gate is one look and a
+paste rather than a curation session. One way in is worth the extra command.
 
 ## The six scripts
 
@@ -82,8 +84,8 @@ wrong (see "Type A" below).
 | `ingest.py` | one file → a proxy, its EXIF, its geometry. A module; `cull.py` calls it per file | nothing |
 | `ambientes.py` | the canonical room vocabulary, label → slug, and the shoot's `ambientes.md`. A module, and a CLI for testing a label | nothing |
 | `vision.py` | asks the model two different questions: what room is this, and which of these is best. A module; also standalone per room | per call |
-| `cull.py` | profile, group, **name and verify the rooms**, allocate the quota, write `contact.html` + `ambientes.md` + `selection.md` | the naming pass, unless `--no-classify` |
-| `develop.py` | `picks.txt` → `1 - input/<shoot>/` under the final names, developing raw and fusing brackets | nothing |
+| `cull.py` | profile, group, **name and verify the rooms**, allocate the quota, write `review-selection.html` + `ambientes.md` + `selection.md` | the naming pass, unless `--no-classify` |
+| `develop.py` | `picks.txt` → `1 - edit/Job_NNNN/` under the final names, developing raw and fusing brackets; also develops the unpicked into `developed/`, mints the job number, writes `job.md`, `originais.md` and `gate.md` | nothing |
 
 `ingest.py`, `ambientes.py` and `vision.py` also run standalone on one file, one
 label or one room, which is how you judge a change without paying for a whole
@@ -303,7 +305,7 @@ photographer's own walkthrough order. Each room's counter turns red past its
 share. HTML rather than markdown because the work is comparing and toggling, not
 reading.
 
-It cannot write into the folder — a browser page can't — so "Copy picks.txt" puts
+It cannot write into the folder — a browser page can't — so "Copiar picks" puts
 the list on the clipboard and you paste it into `picks.txt`.
 
 **It is also where a room gets corrected**, and that is not a convenience. The
@@ -333,12 +335,12 @@ scores. That file is for people — it is what makes a selection defensible to a
 client and auditable later when a listing underperforms. `picks.txt` is the same
 decision for the machine.
 
-### The handoff is a name, not a number
+### The handoff is a name **and** a number
 
-This stage names the photo and every stage after it leaves the name alone.
+This stage names the photo and every stage after it leaves the name alone. Since
+2026-07-31 it also mints the job — see "Next stage" for why that moved here.
 
-`develop.py` writes an ordinary folder into `1 - input/`, each file named
-`AMBIENTE_NN_NNNN.jpg`:
+`develop.py` writes `1 - edit/Job_NNNN/`, each file named `AMBIENTE_NN_NNNN.jpg`:
 
     SALA_01_0002.jpg      ambiente · which room of that kind · which photo
 
@@ -351,16 +353,18 @@ This stage names the photo and every stage after it leaves the name alone.
   and following `picks.txt`. It cannot be settled during naming: only once the
   picks are known is the sequence contiguous rather than full of gaps where the
   unpicked photos were.
-- no job number is claimed here, so `organize.py`'s counter does not need to know
-  this folder exists.
+- the **job number** is minted here, and here only. It used to be claimed
+  downstream, which meant nothing linked a finished job back to the delivery it
+  came from — and the archive needs exactly that link to assemble `originais/`.
+  It goes into `job.md` as `**Shoot:**`.
 
 **The trade-off, stated plainly:** names now sort by ambiente, so `AREA_SERVICO`
 lands above `SALA` on disk whatever order they were shot in, and the zero-padded
-`NN_` prefix that used to carry gallery order through `organize.py`'s text sort is
+`NN_` prefix that used to carry gallery order through a downstream text sort is
 gone. The walkthrough order lives in `selection.md` and in `job.md`'s `#` column
 instead. That order was never the delivery order once the filename grouped by
 ambiente, and a sheet ordered one way with a folder ordered another helps nobody —
-so `contact.html` groups by ambiente too.
+so `review-selection.html` groups by ambiente too.
 
 A pick that is not in `ambientes.md` stops the run before anything is written.
 Guessing would produce a file whose name claims a room nobody verified, and that
@@ -405,13 +409,28 @@ A delivery is 3–15 GB and it stays until you delete it.
 
 | | |
 |---|---|
-| `source/` | the originals. **Never deleted by any script.** The only thing a re-pick needs |
-| `_proxies/` | regenerable; `develop.py --prune` clears it |
+| `source/` | the camera originals. **No script deletes this on its own** |
+| `developed/` | every photo nobody picked, at 2400px. ~370 MB. Written by `develop.py`, copied into the archive when the job is approved |
+| `_proxies/` | 1600px, for judging. Regenerable; `develop.py --prune` clears it |
 | everything else | kilobytes |
 
-Once a job is archived in `3 - completed/`, deleting a shoot's `source/` is safe —
-but you lose the ability to pick differently without asking the photographer
-again. That is a decision per delivery, not a policy.
+**Why the unpicked photographs are developed at all**, and at 2400px rather than
+reusing the 1600px proxies that already exist: because the archive is meant to
+make the camera originals deletable, and the resolution that goes into the
+archive is the permanent ceiling on every future re-pick. The pipeline delivers
+at 2048px. A 1600px archive copy would have been free and would have quietly
+closed the door on ever promoting a discarded frame to a real deliverable.
+
+Once a job is archived **with its `originais/`**, the raw can go:
+
+```bash
+./_config/.venv/bin/python "3 - completed/archive.py" --purge-source "0 - selection/Cobertura"
+```
+
+That is the one exception to the rule above, and it is human-run: it refuses
+unless the work is safely archived, prints what it will delete, and asks you to
+type the shoot's name. **Never run it on your own initiative** — it deletes
+photographs. See `3 - completed/CONTEXT.md` → "Deleting the originals".
 
 ## When it stops
 
@@ -430,5 +449,14 @@ again. That is a decision per delivery, not a policy.
 
 ## Next stage
 
-The drop is now `1 - input/<shoot>/`. Read `1 - input/CONTEXT.md` — from here it
-is the pipeline that already existed, unchanged.
+`develop.py` has minted `1 - edit/Job_NNNN/`. Read `1 - edit/CONTEXT.md`.
+
+**This is where a job is born**, and it is the only place a job number is ever
+minted. Not for tidiness: this is the one moment in the whole pipeline when the
+shoot's name and a fresh number exist in the same process, and the archive needs
+that link three stages later to know which delivery a finished job came out of.
+It is written into `job.md` as `**Shoot:**`, and `archive.py` reads it to
+assemble `originais/`.
+
+A number already used anywhere — in any of the three job folders — is a hard
+stop. Two photo sets under one number is worse than a stopped run.

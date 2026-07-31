@@ -4,8 +4,8 @@ _Last updated: 2026-07-30_
 
 The canonical vocabulary for room names. Every photo that leaves
 `0 - selection/` is named after one of the slugs in the table below —
-`QUARTO_02_0001.jpg` — and keeps that name through `1 - input/`,
-`2 - in progress/` and `3 - completed/`. Nothing renames it again.
+`QUARTO_02_0001.jpg` — and keeps that name through `1 - edit/`,
+`2 - marca dagua/` and `3 - completed/`. Nothing renames it again.
 
 Read fresh on every run of `0 - selection/cull.py`, the way `RULES.md` is, so an
 edit here lands on the next run.
@@ -218,6 +218,6 @@ for the model to be allowed to return it.
 See the `0 - selection/` section of `_dependencies.md` at the project root.
 
 Renaming a slug here changes the filename of every photo delivered after the
-change, and it is not retroactive: a job already in `2 - in progress/` or
+change, and it is not retroactive: a job already in `1 - edit/` or
 `3 - completed/` keeps the names it was given. Adding a synonym or fixing a
 categoria is safe at any time.

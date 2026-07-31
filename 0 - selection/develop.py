@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn `picks.txt` into a drop that `1 - input/` already knows how to eat.
+"""Turn `picks.txt` into a job, and develop the whole delivery while at it.
 
     ./_config/.venv/bin/python "0 - selection/develop.py" "0 - selection/Cobertura"
     ./_config/.venv/bin/python "0 - selection/develop.py" "0 - selection/Cobertura" --prune
@@ -23,18 +23,29 @@ and the window is a white rectangle, so the model **invents** the view — a
 different building, a different sky. Fuse the bracket first and it is given the
 view that was actually there.
 
-Output lands in `1 - input/<shoot>/` under the name it keeps for the rest of its
-life — `SALA_01_0002.jpg`. The ambiente and the room were settled by `cull.py` and
-are read from `ambientes.md`; the only thing decided here is the number, because
-only here is it known which photographs were actually picked. Numbering earlier
-would leave gaps where the unpicked ones were.
+The picks land in `1 - edit/Job_NNNN/` under the name they keep for the rest of
+their lives — `SALA_01_0002.jpg`. The ambiente and the room were settled by
+`cull.py` and are read from `ambientes.md`; the only thing decided here is the
+number, because only here is it known which photographs were actually picked.
+Numbering earlier would leave gaps where the unpicked ones were.
 
     ambientes.md      SALA / room 01     <- cull.py decided this
     picks.txt         2_Sala Cobertura_11.JPG, 2_Sala Cobertura_23.JPG
     ->                SALA_01_0001.jpg, SALA_01_0002.jpg
 
-Nothing downstream renames it: `organize.py` only gathers photos into a job, and
-`enhance.py` only appends `_edit`. Read `0 - selection/CONTEXT.md`.
+**This is where a job is born.** The number is minted here and nowhere else,
+because this is the one moment in the pipeline when the shoot's name and a fresh
+job number are in the same process — and the archive, three stages later, needs
+that link to know which delivery a finished job came out of. It goes into
+`job.md` as `**Shoot:**`.
+
+**The photographs nobody picked are developed too**, at the same 2400px, into
+`<shoot>/developed/`. They travel into the archive when the job is approved, so
+a finished job holds the whole delivery. That is what makes the camera originals
+deletable afterwards — see `archive.py --purge-source`.
+
+Nothing downstream renames anything: `enhance.py` only appends `_edit` and
+`marca.py` only `_final`. Read `0 - selection/CONTEXT.md`.
 """
 
 from __future__ import annotations
@@ -55,11 +66,30 @@ from pillow_heif import register_heif_opener
 register_heif_opener()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_config"))
 import ambientes  # noqa: E402
+import gate  # noqa: E402
+import ledger  # noqa: E402
+import paths  # noqa: E402
+import stage  # noqa: E402
 
-SELECTION_DIR = Path(__file__).resolve().parent
-ROOT = SELECTION_DIR.parent
-INPUT_DIR = ROOT / "1 - input"
+SELECTION_DIR = paths.SELECTION_DIR
+ROOT = paths.ROOT
+
+# Where the developed picks land, as a whole job. This is the moment the shoot
+# name and a fresh job number are in the same process, which is why the number
+# is minted here and not downstream: the archive needs that link to know which
+# delivery a finished job came out of.
+EDIT_DIR = paths.EDIT_DIR
+
+# The unpicked photographs, developed to the same size as the picks and left in
+# the shoot until the job is archived. 2400px for everything, not the 1600px
+# proxies, because the camera originals are meant to be deletable afterwards —
+# and a 1600px archive copy would cap every future re-pick below the 2048px the
+# pipeline delivers.
+REST_DIR = "developed"
+
+STAGE = SELECTION_DIR.name
 
 RAW_EXTS = {
     ".nef", ".nrw", ".cr2", ".cr3", ".crw", ".arw", ".srf", ".sr2", ".raf",
@@ -100,25 +130,34 @@ fold = ambientes.fold_name
 
 # ------------------------------------------------------------------- the picks
 
-def read_picks(job: Path) -> "list[list[str]]":
-    """Parse `picks.txt` into a list of scenes, each a list of frame names."""
-    path = job / "picks.txt"
+def read_picks(shoot: Path) -> "tuple[list[list[str]], dict[str, str]]":
+    """Parse `picks.txt` into scenes, plus whatever you wrote about each.
+
+    Returns (scenes, comments-by-first-frame). A trailing `#` is a comment, not
+    part of a filename — without this a single note on the sheet made `resolve()`
+    fail to find the file and killed the entire hand-off, for one sentence.
+    """
+    path = shoot / "picks.txt"
     if not path.exists():
         sys.exit(f"error: no {rel(path)}.\n"
-                 "       Open contact.html, tick your choices, press "
-                 "'Copy picks.txt',\n"
+                 f"       Open {gate.PAGES['selection']}, tick your choices, "
+                 "press 'Copiar picks',\n"
                  f"       and paste it into {rel(path)}.")
-    scenes = []
+    scenes: "list[list[str]]" = []
+    notes: "dict[str, str]" = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        frames = [f.strip() for f in line.split("+") if f.strip()]
+        body, _, note = line.partition("#")
+        frames = [f.strip() for f in body.split("+") if f.strip()]
         if frames:
             scenes.append(frames)
+            if note.strip():
+                notes[frames[0]] = note.strip()
     if not scenes:
         sys.exit(f"error: {rel(path)} lists no photos")
-    return scenes
+    return scenes, notes
 
 
 def index_source(source: Path) -> "dict[str, Path]":
@@ -274,6 +313,141 @@ def develop_one(n: int, name: str, paths: "list[Path]",
         return n, "failed", lines
 
 
+# ------------------------------------------------------- the rest of the shoot
+
+def develop_rest(shoot: Path, picked: "set[Path]", workers: int) -> "list[Path]":
+    """Develop everything that was NOT picked, at the same size as the picks.
+
+    Idempotent — a file already in `developed/` is left alone, so re-running
+    after a corrected pick costs seconds rather than redoing 244 photographs.
+
+    This is the step that makes deleting the camera originals safe later. The
+    1600px proxies `ingest.py` already made would have been free, but they are
+    below the 2048px this pipeline delivers, and a discarded photograph you
+    might promote later deserves the same resolution as one you kept.
+    """
+    out = shoot / REST_DIR
+    todo = []
+    for p in sorted(shoot.joinpath("source").rglob("*")):
+        if not (p.is_file() and p.suffix.lower() in PHOTO_EXTS) or p in picked:
+            continue
+        dest = out / f"{p.stem}.jpg"
+        if not dest.exists():
+            todo.append((p, dest))
+
+    if not todo:
+        return sorted(out.glob("*.jpg")) if out.is_dir() else []
+
+    out.mkdir(exist_ok=True)
+    print(f"\nrestante    {len(todo)} não escolhida(s) -> {rel(out)}/  "
+          f"(local, sem API)")
+    done = 0
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = {pool.submit(_develop_plain, src, dest): src
+                   for src, dest in todo}
+        for fut in as_completed(futures):
+            ok, msg = fut.result()
+            done += ok
+            if msg:
+                print(f"  !! {msg}")
+            if done and done % 50 == 0:
+                print(f"  {done}/{len(todo)}")
+    print(f"  {done}/{len(todo)} reveladas")
+    return sorted(out.glob("*.jpg"))
+
+
+def _develop_plain(src: Path, dest: Path) -> "tuple[int, str]":
+    try:
+        write_output(load_frame(src), dest)
+        return 1, ""
+    except Exception as e:                       # noqa: BLE001 — one bad file is not fatal
+        return 0, f"{src.name}: {type(e).__name__}: {e}"
+
+
+# ------------------------------------------------------------------- the job
+
+def source_label(scenes: "list[list[str]]", total: int, shoot: Path) -> str:
+    """The `**Dropped as:**` value, kept in the shape `index.md` has always used."""
+    return f"`{shoot.name}` — {len(scenes)} of {total} delivered"
+
+
+def write_job_md(job_dir: Path, shoot: Path, scenes: "list[list[str]]",
+                 resolved: "list[list[Path]]", names: "list[str]",
+                 total: int) -> None:
+    """The job's own front page, and the two lines other scripts parse out of it.
+
+    `**Shoot:**` is what lets the archive find the delivery this job came from,
+    three stages later. `**Dropped as:**` is what `index.md` shows. Both are
+    frozen wire formats — change the wording and the reader silently falls back
+    to a dash.
+    """
+    rows = [f"| `{name}` | `{'+'.join(p.name for p in paths_)}` |"
+            for name, paths_ in zip(names, resolved)]
+    (job_dir / "job.md").write_text(
+        f"# {job_dir.name}\n\n"
+        f"**Shoot:** `{rel(shoot)}`\n\n"
+        f"**Dropped as:** {source_label(scenes, total, shoot)}\n\n"
+        f"{len(names)} photo(s), developed by `0 - selection/develop.py` at "
+        f"{DEVELOP_LONG_EDGE}px.\n\n"
+        "| Photo | Came from |\n|---|---|\n" + "\n".join(rows) + "\n",
+        encoding="utf-8")
+
+
+def write_originais_md(job_dir: Path, shoot: Path, resolved: "list[list[Path]]",
+                       names: "list[str]", rest: "list[Path]") -> None:
+    """The manifest of the whole delivery, written while it is still knowable.
+
+    Only here does one process know both which source file became which name and
+    which ones were left out. Writing it now means `archive.py` copies a finished
+    manifest instead of re-deriving it from a record it would have to read back.
+    """
+    became = {}
+    for name, paths_ in zip(names, resolved):
+        for p in paths_:
+            became[p] = Path(name).stem
+
+    rows = []
+    for p in sorted(shoot.joinpath("source").rglob("*")):
+        if not (p.is_file() and p.suffix.lower() in PHOTO_EXTS):
+            continue
+        mb = p.stat().st_size / 1e6
+        got = became.get(p)
+        rows.append(f"| `{p.relative_to(shoot / 'source')}` | {mb:.1f} MB | "
+                    f"{'sim' if got else 'não'} | "
+                    f"{f'`{got}`' if got else '—'} |")
+
+    (job_dir / "originais.md").write_text(
+        f"# {job_dir.name} — a entrega inteira\n\n"
+        f"_As {len(rows)} fotos que `{shoot.name}` entregou, escolhidas ou não. "
+        f"As imagens em si ficam\nao lado deste arquivo em `escolhidas/` e "
+        f"`nao-escolhidas/`, todas a {DEVELOP_LONG_EDGE}px._\n\n"
+        f"_{len(became)} escolhida(s) · {len(rest)} não escolhida(s) · o bruto "
+        "da câmera pode ser apagado com\n"
+        '`archive.py --purge-source` depois que este trabalho estiver '
+        "arquivado._\n\n"
+        "| Arquivo | Tamanho | Escolhida | Virou |\n|---|---|---|---|\n"
+        + "\n".join(rows) + "\n",
+        encoding="utf-8")
+
+
+def write_shoot_gate(shoot: Path, job_dir: Path, scenes: "list[list[str]]",
+                     notes: "dict[str, str]", total: int) -> None:
+    """Record the selection decision, then copy it into the job.
+
+    The shoot never travels — it receives and keeps — so the job gets a copy.
+    That copy is what makes an archived job self-explaining once the shoot is
+    gone: the picks, the room names, and whatever you wrote about them.
+    """
+    marks = [gate.Mark(key=frames[0], back=False, comment=notes.get(frames[0], ""))
+             for frames in scenes if notes.get(frames[0])]
+    n = gate.rounds_so_far(shoot, STAGE) + 1
+    gate.fold(shoot, STAGE, n, marks, approved=len(scenes))
+    ledger.append(paths.SELECTION_DIR, shoot.name, "gate", len(scenes),
+                  f"{len(scenes)} de {total} escolhida(s), {len(marks)} "
+                  f"comentada(s) · `{gate.RECORD}` rodada {n}")
+    shutil.copy2(shoot / gate.RECORD, job_dir / gate.RECORD)
+
+
 # ----------------------------------------------------------------------- main
 
 def main() -> None:
@@ -282,26 +456,27 @@ def main() -> None:
     ap.add_argument("shoot", help="the shoot folder, e.g. '0 - selection/Cobertura'")
     ap.add_argument("--workers", type=int, default=WORKERS,
                     help=f"picks developed at once (default {WORKERS})")
-    ap.add_argument("--name", help="folder name to create in 1 - input/ "
-                                   "(default: the shoot's own name)")
+    ap.add_argument("--job", help="reuse this job number instead of minting one "
+                                  "(only for a job still in 1 - edit/)")
     ap.add_argument("--prune", action="store_true",
-                    help="delete _proxies/ afterwards. Never touches source/ — "
-                         "that is the only thing a re-pick needs.")
+                    help="delete _proxies/ afterwards. Never touches source/ or "
+                         "developed/ — those are what a re-pick and the archive need.")
     ap.add_argument("--force", action="store_true",
-                    help="overwrite an existing folder in 1 - input/")
+                    help="replace the job folder in 1 - edit/. Refuses once it "
+                         "holds paid results.")
     args = ap.parse_args()
 
-    job = Path(args.shoot)
-    if not job.is_absolute():
-        job = (ROOT / args.shoot) if (ROOT / args.shoot).exists() \
+    shoot = Path(args.shoot)
+    if not shoot.is_absolute():
+        shoot = (ROOT / args.shoot) if (ROOT / args.shoot).exists() \
             else (SELECTION_DIR / args.shoot)
-    if not job.is_dir():
+    if not shoot.is_dir():
         sys.exit(f"error: no such shoot folder: {args.shoot}")
-    source = job / "source"
+    source = shoot / "source"
     if not source.is_dir():
-        sys.exit(f"error: {rel(job)} has no source/ — run fetch.py first")
+        sys.exit(f"error: {rel(shoot)} has no source/ — run fetch.py first")
 
-    scenes = read_picks(job)
+    scenes, notes = read_picks(shoot)
     index = index_source(source)
 
     resolved, missing = [], []
@@ -311,18 +486,39 @@ def main() -> None:
         except DevelopError as e:
             missing.append(str(e))
 
-    out_dir = INPUT_DIR / (args.name or job.name)
+    # Mint the number here, and nowhere else. A name already used anywhere in
+    # the pipeline is a hard stop: two photo sets under one number is worse than
+    # a stopped run, and `add_to_index` would silently overwrite one row with
+    # the other.
+    existing = stage.all_job_dirs()
+    if args.job:
+        if args.job not in existing:
+            sys.exit(f"error: {args.job} não existe em estágio nenhum.")
+        out_dir = existing[args.job]
+        if out_dir.parent != EDIT_DIR:
+            sys.exit(f"error: {args.job} já saiu de {rel(EDIT_DIR)} — está em "
+                     f"{rel(out_dir.parent)}/.\n       Um trabalho que já andou "
+                     "não volta por aqui; use archive.py --return.")
+    else:
+        out_dir = EDIT_DIR / stage.new_job_name()
+
     if out_dir.exists() and any(out_dir.iterdir()):
+        paid = sorted(out_dir.glob("*_edit*.jpg"))
+        if paid:
+            sys.exit(
+                f"error: {rel(out_dir)} já tem {len(paid)} resultado(s) pagos "
+                "da fal.ai dentro.\n       --force apagaria os arquivos, os "
+                "logs que dizem qual prompt os fez, e\n       o registro do "
+                "portão. Apague a pasta à mão se é isso mesmo que você quer.")
         if not args.force:
-            sys.exit(f"error: {rel(out_dir)} already has files in it.\n"
-                     "       Use --force to replace it, or --name for a different "
-                     "folder.")
+            sys.exit(f"error: {rel(out_dir)} já tem arquivos.\n"
+                     "       Use --force para substituir.")
         shutil.rmtree(out_dir)
 
     brackets = sum(1 for r in resolved if len(r) > 1)
     raws = sum(1 for r in resolved if r[0].suffix.lower() in RAW_EXTS)
 
-    print(f"\n{job.name} · {len(resolved)} pick(s) from picks.txt"
+    print(f"\n{shoot.name} · {len(resolved)} pick(s) from picks.txt"
           f"{f', {len(missing)} unresolved' if missing else ''}")
     for m in missing:
         print(f"  !! {m}")
@@ -331,20 +527,20 @@ def main() -> None:
               "   run this again — nothing has been written yet.")
         sys.exit(1)
 
-    catalog = ambientes.read_catalog(job)
+    catalog = ambientes.read_catalog(shoot)
     if not catalog:
-        sys.exit(f"error: no {rel(job / ambientes.CATALOG_NAME)}.\n"
+        sys.exit(f"error: no {rel(shoot / ambientes.CATALOG_NAME)}.\n"
                  "       That file is where the room names live, and the delivered "
                  "filenames are\n       built from it. Run cull.py on this shoot "
                  "first:\n"
                  f'         ./_config/.venv/bin/python "0 - selection/cull.py" '
-                 f'"{rel(job)}"')
+                 f'"{rel(shoot)}"')
     names, unnamed = assign_names(resolved, catalog)
     for u in unnamed:
         print(f"  !! {u}")
     if unnamed:
         print(f"\n   {len(unnamed)} pick(s) have no room in "
-              f"{rel(job / ambientes.CATALOG_NAME)}, so they cannot be\n"
+              f"{rel(shoot / ambientes.CATALOG_NAME)}, so they cannot be\n"
               "   named. Re-run cull.py to rebuild the catalogue — nothing has been "
               "written yet.")
         sys.exit(1)
@@ -378,19 +574,35 @@ def main() -> None:
               "picks.txt and re-run with --force.")
         return
 
+    # Everything the delivery contained, not just what was kept. This is what
+    # the archive will hold, and what makes deleting the camera originals a
+    # decision rather than a loss.
+    picked = {p for paths_ in resolved for p in paths_}
+    rest = develop_rest(shoot, picked, args.workers)
+
+    total = sum(1 for p in source.rglob("*")
+                if p.is_file() and p.suffix.lower() in PHOTO_EXTS)
+    write_job_md(out_dir, shoot, scenes, resolved, names, total)
+    write_originais_md(out_dir, shoot, resolved, names, rest)
+    write_shoot_gate(shoot, out_dir, scenes, notes, total)
+
+    ledger.append(paths.SELECTION_DIR, shoot.name, "left", len(names),
+                  f"-> `{rel(out_dir)}` · {total} entregues, {len(rest)} fora")
+    ledger.append(EDIT_DIR, out_dir.name, "entered", len(names),
+                  f"de `{rel(shoot)}` · {total} entregues, {len(rest)} não escolhidas")
+
     if args.prune:
-        proxies = job / "_proxies"
+        proxies = shoot / "_proxies"
         if proxies.is_dir():
             n = sum(1 for _ in proxies.rglob("*"))
             shutil.rmtree(proxies)
-            print(f"pruned      {n} proxy file(s); source/ left alone")
+            print(f"pruned      {n} proxy file(s); source/ e developed/ intactos")
 
-    print(f"\nThe drop is ready, and these {tally['ok']} name(s) are final — "
-          "`organize.py` gathers them\ninto a job without renaming anything, and "
-          "`enhance.py` only appends `_edit`.\nThe photographer's original filenames "
-          "are recorded in job.md. Then:\n")
-    print('  ./_config/.venv/bin/python "1 - input/organize.py"')
-    print('  ./_config/.venv/bin/python "2 - in progress/batch.py"')
+    paths.notify(out_dir.name, f"{tally['ok']} reveladas · pronto para editar")
+    print(f"\n{out_dir.name} está pronto em {rel(out_dir)} — estes "
+          f"{tally['ok']} nome(s) são finais e\nnada mais renomeia: `enhance.py` "
+          "só acrescenta `_edit`, `marca.py` só `_final`.\n")
+    print("  " + paths.cmd(EDIT_DIR / "batch.py"))
 
 
 if __name__ == "__main__":

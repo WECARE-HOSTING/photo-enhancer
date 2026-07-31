@@ -6,7 +6,7 @@
 
 Reads every file in the shoot's `source/`, writes a proxy for each, groups them
 into scenes, measures what the pixels say, and lays the result out as
-`contact.html` — a clickable contact sheet grouped by room, ranked within each
+`review-selection.html` — a clickable contact sheet grouped by room, ranked within each
 room, that writes `picks.txt` for you.
 
 Then it stops. **Choosing is yours** — this stage's whole job is to make 307
@@ -47,7 +47,9 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_config"))
 import ambientes  # noqa: E402
+import gate  # noqa: E402
 import ingest  # noqa: E402
 from ambientes import fold  # noqa: E402 — one owner for accent-insensitive keys
 
@@ -871,7 +873,7 @@ def group_rooms(scenes: "list[Scene]", rules: Rules,
     it for you — a photographer who files bedrooms into `2_Quarto_1/` and
     `3_Quarto_2/` is separated by `room_order` above, but one who hands over a
     flat folder of `IMG_9620.HEIC` is not, and two bedrooms then arrive as one.
-    `contact.html` is where that number gets set, because seeing it is what tells
+    The contact sheet is where that number gets set, because seeing it is what tells
     you the rooms are different.
 
     Unlike `ambiente`, this needs no `Visto` column to prove a person wrote it.
@@ -1123,7 +1125,7 @@ def write_contact_sheet(job: Path, groups: "list[RoomGroup]", prof: Profile,
         "slugs": list(vocab.order) if vocab else [],
     }).replace("</", "<\\/")
 
-    dest = job / "contact.html"
+    dest = job / gate.PAGES["selection"]
     dest.write_text(TEMPLATE.format(
         title=html.escape(job.name),
         stamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -1187,6 +1189,11 @@ def tile(job: Path, s: Scene, g: RoomGroup, best: bool, siblings: int) -> str:
         # copy of the whole vocabulary.
         f'<select class="rm" data-room="{html.escape(g.name)}" '
         f'data-files="{html.escape(names)}"></select>'
+        # A sibling of the label for the same reason the <select> is: a control
+        # inside a <label> toggles that label's checkbox when clicked, so typing
+        # here would silently pick or unpick the photograph.
+        f'<textarea class="note" rows="1" data-note="{html.escape(names)}" '
+        f'placeholder="por quê"></textarea>'
         f'</div>')
 
 
@@ -1227,6 +1234,11 @@ section:first-of-type h1.amb {{ margin-top:1rem }}
 .shot {{ display:block; cursor:pointer }}
 /* The room control. Quiet until you touch it — it is a correction surface, not
    part of the picking, and it must not compete with the checkbox for attention. */
+.note {{ display:block; width:calc(100% - 2px); margin:0 1px 1px; padding:.25rem .4rem;
+  font:inherit; font-size:11px; color:var(--fg); background:transparent;
+  border:0; border-top:1px solid var(--line); resize:vertical }}
+.note::placeholder {{ color:var(--dim); opacity:.7 }}
+.note:focus {{ outline:1px solid var(--dim); outline-offset:-1px }}
 .rm {{ display:block; width:100%; border:0; border-top:1px solid var(--line);
   padding:.3rem .5rem; font:11px/1.4 inherit; color:var(--dim);
   background:transparent; cursor:pointer; appearance:none }}
@@ -1294,7 +1306,7 @@ you just created.</p>
 
 <div id="bar">
   <span id="n">0</span><span>of <b id="cap">{quota}</b> picked</span>
-  <button class="go" onclick="copyPicks()">Copy picks.txt</button>
+  <button class="go" onclick="copyPicks()">Copiar picks</button>
   <button onclick="setAll(false)">Clear</button>
   <button onclick="fillQuota()">Fill to quota</button>
   <button class="amb" id="cat" onclick="copyCatalog()" hidden></button>
@@ -1354,16 +1366,38 @@ function fillQuota() {{
 function copyPicks() {{
   // Order follows the page, which is the walkthrough order the photographer
   // numbered. develop.py keeps it, so this is also the gallery order.
-  const lines = boxes().filter(b => b.checked).map(b => b.dataset.pick);
-  const text = '# picks.txt — one scene per line, in gallery order.\\n'
-    + '# A "+" joins the frames of one bracket into a single photo.\\n'
-    + '# Edit freely; blank lines and #comments are ignored.\\n'
-    + lines.join('\\n') + '\\n';
-  navigator.clipboard.writeText(text).then(() => {{
-    const b = document.querySelector('button.go');
-    b.textContent = lines.length + ' lines copied \\u2713';
-    setTimeout(() => b.textContent = 'Copy picks.txt', 1800);
+  const lines = boxes().filter(b => b.checked).map(b => {{
+    const t = document.querySelector(
+      'textarea[data-note="' + CSS.escape(b.dataset.pick) + '"]');
+    const note = t ? t.value.replace(/\\s+/g, ' ').trim() : '';
+    return note ? b.dataset.pick + '   # ' + note : b.dataset.pick;
   }});
+  const text = '# picks.txt — uma cena por linha, na ordem da galeria.\\n'
+    + '# Um "+" junta os quadros de um bracket numa foto só.\\n'
+    + '# Depois de um "#" é comentário, e vai para o registro do trabalho.\\n'
+    + lines.join('\\n') + '\\n';
+  copyOut(text, document.querySelector('button.go'),
+          lines.length + ' linha(s) copiada(s) \\u2713', 'Copiar picks');
+}}
+
+/* One clipboard helper for the whole page, with the failure branch the review
+   pages have always had and this one never did: under some browsers, and over
+   http rather than file://, writeText rejects — and without a catch the button
+   did nothing at all and said nothing. A silent copy button is worse than a
+   broken one, because you paste the previous clipboard and never notice. */
+function copyOut(text, btn, done, back) {{
+  navigator.clipboard.writeText(text).then(
+    () => {{
+      const was = back || btn.textContent;
+      btn.textContent = done;
+      setTimeout(() => btn.textContent = was, 1800);
+    }},
+    () => {{
+      btn.textContent = 'Clipboard bloqueado \\u2717';
+      alert('O navegador bloqueou a cópia.\\n\\n'
+            + 'Abra este arquivo direto do disco (file://), não por http.');
+      setTimeout(() => btn.textContent = back, 2500);
+    }});
 }}
 
 /* ---------------------------------------------------------------- the rooms
@@ -1473,12 +1507,9 @@ function copyCatalog() {{
     return '|' + cells.join('|') + '|';
   }}).join('\\n');
 
-  navigator.clipboard.writeText(out).then(() => {{
-    const b = document.getElementById('cat');
-    const was = b.textContent;
-    b.textContent = changed + ' row(s) copied \\u2713 — paste over {catalog_name}';
-    setTimeout(() => b.textContent = was, 2600);
-  }});
+  const b = document.getElementById('cat');
+  copyOut(out, b, changed + ' linha(s) \\u2713 — cole por cima de {catalog_name}',
+          b.textContent);
 }}
 
 paint();

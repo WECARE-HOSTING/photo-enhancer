@@ -1,4 +1,4 @@
-# 2 — In Progress
+# 1 — Edit
 
 _Last updated: 2026-07-31_
 
@@ -9,12 +9,15 @@ photo to fal.ai together and lets the model read the image itself; nothing here
 looks at the photo or writes a per-photo prompt.
 
 The fixed files in this folder (`PROMPT.md`, `enhance.py`, `batch.py`,
-`review.py`, this contract) are the stage's tooling. The `Job_NNNN/` folders next
-to them are traffic — they arrive from `1 - input/`, and they leave when you say so.
+`review.py`, `ledger.md`, this contract) are the stage's tooling. The `Job_NNNN/`
+folders next to them are traffic — they arrive from `0 - selection/develop.py`,
+and they leave when you say so.
 
-**Input:** `Job_NNNN/` with its photos under their own names + `job.md`, handed over by `1 - input/organize.py`
-**Process:** every photo through fal.ai with `PROMPT.md`, concurrently; then a `review.html` and a stop
-**Output:** `<name>_edit.jpg` + `<name>_log.md` written back into the job folder, which moves to `3 - completed/` **only when you approve it**
+**This is the only stage that costs money.** Stage 0 and stage 2 are local.
+
+**Input:** `Job_NNNN/` with its photos under their own names, `job.md` and `gate.md`, minted by `0 - selection/develop.py`
+**Process:** every photo through fal.ai with `PROMPT.md`, concurrently; then a `review-edit.html` and a stop
+**Output:** `<name>_edit.jpg` + `<name>_log.md` written back into the job folder, which moves to `2 - marca dagua/` **only when you approve it**
 
 **Nothing is renamed here.** The name arrives settled from `0 - selection/` and
 `enhance.py` only appends `_edit`: `SALA_01_0001.jpg` produces
@@ -23,15 +26,14 @@ to them are traffic — they arrive from `1 - input/`, and they leave when you s
 ## Running it
 
 ```bash
-./_config/.venv/bin/python "2 - in progress/batch.py"
-./_config/.venv/bin/python "2 - in progress/batch.py" --job Job_0023 --workers 6
-./_config/.venv/bin/python "2 - in progress/batch.py" --rework     # redo the ones you rejected
-./_config/.venv/bin/python "2 - in progress/batch.py" --approve    # -> 3 - completed/
-./_config/.venv/bin/python "2 - in progress/batch.py" --redo       # re-run every photo, overwriting
-./_config/.venv/bin/python "2 - in progress/batch.py" --reindex    # rebuild 3 - completed/index.md; runs nothing
+./_config/.venv/bin/python "1 - edit/batch.py"
+./_config/.venv/bin/python "1 - edit/batch.py" --job Job_0023 --workers 6
+./_config/.venv/bin/python "1 - edit/batch.py" --rework     # redo what you marked
+./_config/.venv/bin/python "1 - edit/batch.py" --approve    # -> 2 - marca dagua/
+./_config/.venv/bin/python "1 - edit/batch.py" --redo       # re-run every photo, overwriting
 
 # one photo, by path — for tuning, not for jobs
-./_config/.venv/bin/python "2 - in progress/enhance.py" "2 - in progress/Job_0023/SALA_01_0001.jpg"
+./_config/.venv/bin/python "1 - edit/enhance.py" "1 - edit/Job_0023/SALA_01_0001.jpg"
 ```
 
 The folder names have spaces in them — **quote every path**.
@@ -40,7 +42,7 @@ The folder names have spaces in them — **quote every path**.
 pre-flight cost estimate, nothing to check first — the command above is the
 whole thing. (A `--dry-run` flag existed until 2026-07-27; watching real
 results was trusted over its price preview. The dead code sits in
-`2 - in progress/_archive/dry_run.py` and is wired to nothing. Don't go
+`1 - edit/_archive/dry_run.py` and is wired to nothing. Don't go
 looking for a preview flag — this paragraph is the answer.)
 
 `batch.py` is the normal entry point. It takes **one job at a time** — the
@@ -62,26 +64,55 @@ fingerprint recorded inside each `_log.md`, which still answers *which wording
 produced the file I am looking at*. To compare two prompts deliberately, copy a
 photo somewhere else and run `enhance.py` against it directly.
 
+**When a whole batch fails the same way**, the run says so instead of telling
+you to retry: sixty identical failures is a key, a quota or an outage, and
+"re-run to retry just those" would burn another half hour and more money failing
+identically. The summary also says whether each failure died **before or after**
+the request reached fal, which is the only thing that answers "did I pay for 60
+or for 62" without opening sixty logs.
+
 ## The gate
 
-**The job does not archive itself.** It used to, the moment no photo had failed.
-But "the API answered" and "this is good enough to send a client" are different
-questions, and a script can only answer the first. So a finished run writes
-`review.html` into the job folder and stops.
+**The job does not advance itself.** It used to archive itself the moment no
+photo had failed. But "the API answered" and "this is good enough to send a
+client" are different questions, and a script can only answer the first. So a
+finished run writes `review-edit.html` into the job folder and stops.
 
-`review.html` is the job's before-and-after: each photo's source and its `_edit`
-side by side, half the window each, grouped by ambiente, click either one to fill
-the screen. It is deliberately not the contact sheet's 215px thumbnails — that
-page compares fifty photographs to each other, this one compares exactly two, and
-the difference between a good edit and a subtly wrong one does not survive a
-thumbnail.
+The page is the job's before-and-after: each photo's source and its `_edit`
+side by side, half the window each, grouped by ambiente. It is deliberately not
+the contact sheet's 215px thumbnails — that page compares fifty photographs to
+each other, this one compares exactly two, and the difference between a good
+edit and a subtly wrong one does not survive a thumbnail.
 
-Tick what is **not** good enough, press **Copy rejected**, paste into
-`rework.txt` beside it, then:
+**Click an image and press `a` / `b`.** That is the point of this page. Side by
+side answers *did it change*; it does not answer *did it change correctly*,
+because the eye cannot carry a 3° wall lean or an invented chair across a gap.
+The flip swaps the two in place, at identical scale and position, and a wrong
+edit that survives a side-by-side does not survive it.
+
+Mark what is **not** good enough, **write why in the box under it**, press
+**Copiar marcações**, and paste into `gate.txt` beside the page — the file is
+already there, created by the run, so `open -e` gives you plain text and the job
+is ⌘A ⌘V ⌘S. Then:
 
 ```bash
-./_config/.venv/bin/python "2 - in progress/batch.py" --rework --job Job_0023
+./_config/.venv/bin/python "1 - edit/batch.py" --rework --job Job_0023
 ```
+
+    SALA_01_0002        # sofá saiu com textura plástica, refazer
+    +COZINHA_01_0001    # bancada clareou mais do que eu queria, mas passa
+
+A bare name sends the photo back; `+` keeps it and records the note anyway.
+
+**The comment does two things.** It goes into `gate.md`, the job's permanent
+record, **and** it is appended to that photo's prompt for the re-run — so
+"a sala ficou amarela demais" is actually acted on rather than just filed. The
+log records the base fingerprint and the addendum separately, so *which wording
+produced this image* stays answerable.
+
+**When the same photo comes back twice, the run says so.** A photo failing the
+same way in two rounds is a `PROMPT.md` problem, not a re-run problem: the
+addendum fixes one photo, the file fixes every future one.
 
 `--rework` needs no special machinery: it deletes those `_edit.jpg` files, and
 deleting one is exactly what makes the ordinary skip rule above run that photo
@@ -92,29 +123,24 @@ disk. It is forgiving about what you paste — a bare stem, a filename, an
 When it is right, **you** approve it:
 
 ```bash
-./_config/.venv/bin/python "2 - in progress/batch.py" --approve --job Job_0023
+./_config/.venv/bin/python "1 - edit/batch.py" --approve --job Job_0023
 ```
 
-`--approve` checks that every photo actually has an edit before archiving — not to
+`--approve` checks that every photo actually has an edit before moving on — not to
 second-guess you, but because a photo with no edit has nothing to show and so does
-not appear on that page at all, and archiving a job with a hole in it would put it
-beyond the stage that knows how to fill it. Then it deletes `review.html` and
-`rework.txt`, which are scratch, and moves the job.
+not appear on that page at all, and passing a job with a hole in it would put it
+beyond the stage that knows how to fill it. It also refuses while `gate.txt` still
+marks photos for rework, which would otherwise be thrown away silently.
+
+**The order is: record, then delete, then move.** The gate's decisions are folded
+into `gate.md` and a row is written to `ledger.md` *before* the scratch files go
+and the folder moves. Until 2026-07-31 it did the opposite — unlinked the page and
+the rework list and then archived — which destroyed the rejection history at the
+exact moment it became permanent.
 
 **Approving is the user's call and nobody else's.** An agent running `--approve`
 on its own initiative has decided for them that photos they have not seen are fit
 to send a client.
-
-**Archiving writes a row into `3 - completed/index.md`** — job, photo count, the
-name it was dropped under, and the date — so a finished job can be found by what
-the client called it instead of by opening folders. The folders are the truth and
-the index is a convenience: if jobs get moved or deleted by hand, `--reindex`
-rebuilds it from whatever is actually there.
-
-That rebuild counts photographs by identity, not by file: several archived jobs
-had their sources deleted by hand to save space, and counting sources reported
-them as empty, so `--reindex` used to overwrite an accurate row with a zero. A
-photo counts if it survives as a source, as a result, or as both.
 
 `enhance.py` does the single-photo chain: reads `PROMPT.md` fresh, measures
 the source, downscales it for upload, uploads it to the fal CDN, submits the
@@ -346,7 +372,7 @@ the two examples below).
 **Run the conflict check after every prompt edit.** Free, instant, no photo:
 
 ```bash
-./_config/.venv/bin/python "2 - in progress/enhance.py" --check
+./_config/.venv/bin/python "1 - edit/enhance.py" --check
 ```
 
 It reports length against the API limit, confirms the marker, and lists every

@@ -1,0 +1,33 @@
+# The venv, declared. Rebuild it with:
+#
+#   python3 -m venv _config/.venv
+#   ./_config/.venv/bin/pip install -r _config/requirements.txt
+#
+# `pillow-heif` is the one that must not be forgotten. Without it Pillow cannot
+# open a phone's .heic at all, and the failure is silent in the worst possible
+# way: a 48-photo delivery once got curated on the strength of the two JPEGs in
+# it, because the other 46 were simply never read. That is why this file exists.
+
+# Images
+pillow==12.3.0
+pillow-heif==1.5.0          # .heic — see above
+rawpy==0.27.0               # RAW development, through libraw
+opencv-python-headless==5.0.0.93
+ImageHash==4.3.2
+PyWavelets==1.9.0
+ExifRead==3.5.1
+
+# Numerics
+numpy==2.5.1
+scipy==1.18.0
+
+# fal.ai and the network
+fal-client==1.0.0
+httpx==0.28.1
+requests==2.34.2
+python-dotenv==1.2.2
+
+# Fetching a delivery
+gdown==6.1.0                # Google Drive folders
+beautifulsoup4==4.15.0
+tqdm==4.70.0

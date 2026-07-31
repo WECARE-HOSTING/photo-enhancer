@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Run a real estate photo through the fal.ai API with the fixed PROMPT.md.
 
-    ./_config/.venv/bin/python "2 - in progress/enhance.py" "2 - in progress/Job_0023/SALA_01_0001.jpg"
+    ./_config/.venv/bin/python "1 - edit/enhance.py" "1 - edit/Job_0023/SALA_01_0001.jpg"
 
 Same prompt, every photo. No per-photo analysis or per-photo prompt file:
 the model reads the attached source image itself; PROMPT.md just tells it
 what to preserve, fix, remove, and tidy.
+
+The one exception is `extra=`: when you send a photo back at the gate with a
+comment, that sentence is appended to the prompt for **that photo's re-run
+only**. The log records the base fingerprint and the addendum separately, so
+"which wording produced this image" stays answerable. A comment that keeps
+coming back is a `PROMPT.md` edit waiting to happen — the addendum fixes one
+photo, the file fixes every future one.
 
 The source's name is kept and `_edit` is appended — `SALA_01_0001.jpg` becomes
 `SALA_01_0001_edit.jpg`, alongside `SALA_01_0001_log.md`. Both are written **next
@@ -72,11 +79,21 @@ RATIOS = {
 }
 
 class EnhanceError(Exception):
-    """One photo failed. Raised rather than exiting, so a batch can carry on."""
+    """One photo failed. Raised rather than exiting, so a batch can carry on.
+
+    `phase` says whether the request had already reached fal when it died —
+    `before` means nothing was billed, `after` means it may have been. At 2am,
+    after two failures in a batch of sixty, "did I pay for 60 or for 62" is a
+    real question and nobody is going to open sixty log files to answer it.
+    """
+
+    def __init__(self, msg: str, phase: str = "before"):
+        super().__init__(msg)
+        self.phase = phase
 
 
-def fail(msg: str) -> "None":
-    raise EnhanceError(msg)
+def fail(msg: str, phase: str = "before") -> "None":
+    raise EnhanceError(msg, phase)
 
 
 def is_gpt_image(model: str) -> bool:
@@ -314,7 +331,8 @@ def rel(p: Path) -> str:
 
 
 def run(photo: Path, model: str = DEFAULT_MODEL,
-        emit=print, out_dir: "Path | None" = None) -> Path:
+        emit=print, out_dir: "Path | None" = None,
+        extra: "str | None" = None) -> Path:
     """Run one photo through the pipeline. Returns the saved image path.
     Raises EnhanceError on failure.
 
@@ -325,6 +343,10 @@ def run(photo: Path, model: str = DEFAULT_MODEL,
     Used by the CLI below and by batch.py. `emit` collects this photo's
     progress lines — batch.py hands it a per-photo buffer so parallel runs
     don't interleave their output.
+
+    `extra` is the comment written at the gate when this photo was sent back.
+    It is appended to PROMPT.md's text for this run only, and recorded in the
+    log beside the base fingerprint rather than folded into it.
     """
     t_start = time.time()
     if not photo.is_absolute():
@@ -335,6 +357,13 @@ def run(photo: Path, model: str = DEFAULT_MODEL,
     out_dir = out_dir or photo.parent
     stem = photo.stem
     prompt, prompt_id = load_prompt()
+
+    extra = (extra or "").strip()
+    if extra:
+        # Appended last so it reads as the most recent instruction. An absolute
+        # rule earlier in PROMPT.md still outranks it — see CONTEXT.md, "When an
+        # instruction is being ignored, look for the conflict".
+        prompt = f"{prompt}\n\nCorreção para esta foto: {extra}"
 
     t = time.time()
     upload_bytes, mime_type, src_w, src_h, sent_size = prepare_upload(photo)
@@ -397,13 +426,16 @@ def run(photo: Path, model: str = DEFAULT_MODEL,
     emit(f"uploaded    {t_upload:.1f}s")
 
     t = time.time()
-    result = fal_client.subscribe(model, arguments=payload, with_logs=False)
+    try:
+        result = fal_client.subscribe(model, arguments=payload, with_logs=False)
+    except Exception as e:                  # noqa: BLE001 — the request left; it may have billed
+        fail(f"{type(e).__name__}: {e}", phase="after")
     t_generate = time.time() - t
     emit(f"generated   {t_generate:.1f}s")
 
     images = result.get("images") or []
     if not images:
-        fail(f"no image in response: {json.dumps(result)[:500]}")
+        fail(f"no image in response: {json.dumps(result)[:500]}", phase="after")
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -434,6 +466,11 @@ def run(photo: Path, model: str = DEFAULT_MODEL,
         f"| Model | `{model}` |",
         f"| Prompt | `PROMPT.md` · {len(prompt)} chars · fingerprint `#{prompt_id}` |",
     ]
+    if extra:
+        # Recorded beside the fingerprint, never folded into it. The fingerprint
+        # answers "which PROMPT.md wording was in force"; this answers "and what
+        # was added for this one photo".
+        lines.append(f"| Correção desta foto | {extra} |")
     if gpt_image:
         lines += [
             f"| Quality | {QUALITY} |",
@@ -470,7 +507,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("photo", nargs="?",
                     help="source photo, e.g. "
-                         "'2 - in progress/Job_0023/SALA_01_0001.jpg'")
+                         "'1 - edit/Job_0023/SALA_01_0001.jpg'")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--check", action="store_true",
                     help="audit PROMPT.md for self-contradictions; no photo, no cost")
