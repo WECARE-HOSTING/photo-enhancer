@@ -187,7 +187,8 @@ def drop_results(job: Path, stems: "list[str]", suffix: str,
 SHELVED_RE = re.compile(r"_edit_r\d+\.jpg$", re.I)
 
 
-def shelve_result(job: Path, photo: Path, suffix: str) -> "Path | None":
+def shelve_result(job: Path, photo: Path, suffix: str,
+                  current: "Path | None" = None) -> "Path | None":
     """Rename this photo's current result aside, keeping it. Returns the new path.
 
     The counterpart to `drop_results()`, for the one place where a rejected result
@@ -196,14 +197,20 @@ def shelve_result(job: Path, photo: Path, suffix: str) -> "Path | None":
     you asked and breaks something else. Renaming makes that undo a free rename
     instead of another paid run.
 
+    **Pass `current` when you know which file you are replacing.** `result_of()`
+    prefers `<stem>_edit.jpg` over `<stem>_edit_1.jpg`, so a job that has both —
+    which happens after a run at `NUM_IMAGES > 1` followed by one at 1 — would
+    otherwise shelve one file while the caller overwrites the other, losing the
+    second and keeping a stale copy of the first.
+
     `_edit_r1`, `_edit_r2`… — never `_edit_1`, which is what `NUM_IMAGES > 1`
     writes and what `result_of()` looks for. The two must not collide.
 
     Returns None when there was nothing to shelve, which is not an error: a
     retouch of a photo whose edit went missing still has work to do.
     """
-    current = result_of(job, photo, suffix)
-    if current is None:
+    current = current or result_of(job, photo, suffix)
+    if current is None or not current.exists():
         return None
     n = 1
     while (job / f"{photo.stem}{suffix}_r{n}.jpg").exists():

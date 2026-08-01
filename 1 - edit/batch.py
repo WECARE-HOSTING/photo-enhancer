@@ -263,6 +263,20 @@ def main() -> None:
                   f"foto de {job.name} e foram ignoradas: {', '.join(unknown[:4])}")
         back = [m for m in marks if m.back]
 
+        # Only `+` lines: nothing is coming back. Say so and stop, rather than
+        # folding a round, deleting the paste target and then reporting "as N já
+        # têm resultado — use --redo", which is about a different situation
+        # entirely. The notes are still in gate.txt, so a real mark can be added
+        # to them and the same command run again.
+        if not back:
+            sys.exit(
+                f"error: {gate.NAME} só tem linhas `+` — nenhuma foto marcada "
+                "para voltar.\n       Um `+` é uma nota, não um pedido de "
+                "retoque; nada foi enviado e nada foi gravado.\n"
+                f"       Tire o `+` da(s) foto(s) que você quer refazer, ou "
+                f"aprove:\n         "
+                + paths.cmd(Path(__file__), "--approve", "--job", job.name))
+
         # Refuse BEFORE fold_gate() and before anything is sent. A photo marked
         # with no sentence has nothing to send — phase 3 IS the sentence — and
         # folding first would write a round into gate.md that never happened.

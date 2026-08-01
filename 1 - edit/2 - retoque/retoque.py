@@ -206,7 +206,11 @@ def run(source: Path, edit: Path, instruction: str,
         fal.download(images[0]["url"], scratch)
         with Image.open(scratch) as out:
             out_w, out_h = out.size
-        shelved = stage.shelve_result(job, source, "_edit")
+        # `current=edit` and not a fresh lookup: `result_of()` prefers
+        # `_edit.jpg` over `_edit_1.jpg`, so on a job holding both it would shelve
+        # one file while the line below overwrites the other — losing the new
+        # result's predecessor and keeping a stale copy of an unrelated one.
+        shelved = stage.shelve_result(job, source, "_edit", current=edit)
         scratch.replace(edit)
     finally:
         scratch.unlink(missing_ok=True)
