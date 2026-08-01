@@ -6,11 +6,17 @@ this phase, when, in what order.
     ledger.append(paths.EDIT_DIR, "Job_0023", "run 1", 52,
                   "50 ok · 2 falhas · 28m · PROMPT `#9803cabe`")
 
-**Logs are write-only for the pipeline and read-only for humans.** Nothing in
-this project reads a ledger to decide what to do next. The filesystem is still
-the state — `is_done()` asks the disk whether a file exists. The moment a log
-becomes an input it can disagree with the disk, and that is exactly the class of
-bug that rework-by-deletion was built to eliminate.
+**A ledger is write-only for the pipeline and read-only for humans.** Nothing in
+this project reads one to decide what to do next. The filesystem is still the
+state — `is_done()` asks the disk whether a file exists. The moment a log becomes
+an input it can disagree with the disk, and that is exactly the class of bug that
+rework-by-deletion was built to eliminate.
+
+*(One file in the project does cross that line, knowingly: `Job_NNNN/<name>_log.md`
+is parsed by `2 - retoque/retoque.py` for the original's CDN URL, to avoid
+uploading the same photograph twice. It is an optimisation, not state — if the
+line is missing the retouch uploads the file and carries on. **Ledgers are not
+that**, and none of them may become an input. See `_dependencies.md`.)*
 
 Two record classes, and one test tells them apart:
 

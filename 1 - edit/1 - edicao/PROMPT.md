@@ -32,12 +32,21 @@ People, hands and vehicles: every person, hand, arm and sleeve already in the so
 
 ===== END OF PROMPT — everything below is NOT sent to the model =====
 
+## This file governs phase 1 only
+
+Every photo of a job, same text, no exceptions. **Phase 3 does not read it.**
+When you send a photo back at the gate with a comment, `2 - retoque/` runs it
+again with your sentence alone — the whole point of that phase is to override
+rules written here, one photo at a time. So a rule added here is a rule for
+every future photo, and a gate comment is a rule for exactly one.
+
 ## fal.ai request settings
 
-What `enhance.py` sends alongside the text above, on every run. These are
-read from the constants at the top of `enhance.py`, not from this file — this
-list is here so you can check them in the same place you edit the prompt.
-Change the constant in `enhance.py` if one of these needs to change.
+What `enhance.py` sends alongside the text above, on every run. These are read
+from the constants at the top of `../../_config/fal.py`, not from this file —
+this list is here so you can check them in the same place you edit the prompt.
+Change the constant in `fal.py` if one of these needs to change; it is shared
+with phase 3, so a change lands on both.
 
 | Setting          | Value                                                              | Constant             |
 | ---------------- | ------------------------------------------------------------------ | -------------------- |

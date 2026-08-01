@@ -40,6 +40,13 @@ COMPLETED_DIR = ROOT / "3 - completed"
 JOB_DIRS = (EDIT_DIR, MARCA_DIR, COMPLETED_DIR)
 STAGE_DIRS = (SELECTION_DIR, *JOB_DIRS)
 
+# The two phases inside `1 - edit/`. They hold the stage's *tooling*, never a
+# job: a `Job_NNNN/` stays whole in `1 - edit/` with its photo, its `_edit` and
+# its `_log` side by side, because stages 2 and 3 find files by name in the job
+# folder and splitting it would hide them.
+EDICAO_DIR = EDIT_DIR / "1 - edicao"        # phase 1 — one fixed prompt, every photo
+RETOQUE_DIR = EDIT_DIR / "2 - retoque"      # phase 3 — one free instruction, one photo
+
 DROP_DIR = SELECTION_DIR / "drop"
 LOGOS_DIR = CONFIG_DIR / "logos"
 SELETOR_DIR = CONFIG_DIR / "Seletor"

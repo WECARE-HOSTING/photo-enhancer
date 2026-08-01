@@ -179,33 +179,90 @@ rooms are called; `RULES.md` is what you edit to change which photos get chosen.
 | Output size | 2400px, for the picks and the unpicked alike |
 | `originais.md` is written here | Only here does one process know both which source file became which name and which were left out. `archive.py` copies the finished manifest rather than re-deriving it — which would mean reading a record back |
 
-## `1 - edit/PROMPT.md`
+## `1 - edit/1 - edicao/PROMPT.md`
 
-**The file you will edit most.** The only surface that changes how photos come out.
+**The file you will edit most.** The only surface that changes how photos come out
+**in phase 1** — which is every photo of every job.
+
+**Phase 3 does not read it.** `2 - retoque/` sends the human's own sentence and
+nothing else, on purpose: that sentence exists to override rules written here. So a
+rule added here binds every future photo, and a gate comment binds exactly one.
 
 | | |
 |---|---|
-| Depended on by | `enhance.py` (`load_prompt()`, fresh per photo), every `<name>_log.md`, `1 - edit/CONTEXT.md` → "Editing PROMPT.md" |
+| Depended on by | `enhance.py` (`load_prompt()`, fresh per photo), every `<name>_log.md`, `1 - edicao/CONTEXT.md` → "Editing PROMPT.md" |
+| **Not** depended on by | `2 - retoque/retoque.py` — deliberately, and the whole point of phase 3 |
 | Must not change | The `===== END OF PROMPT` marker line |
 | Safe to change freely | All prose above it. No code parses its structure |
-| Guard against self-contradiction | `enhance.py --check` — free, instant, needs no photo. **Run after every edit** |
+| Guard against self-contradiction | `1 - edicao/enhance.py --check` — free, instant, needs no photo. **Run after every edit** |
 | **Must never learn the watermark exists** | Naming a watermark in a prompt trips fal's content policy: `content_policy_violation`, the request never reaches the model, no charge and no image. The mark is composed locally and `PROMPT.md` is not told |
 | Known hazard: conflicts | An absolute-sounding rule earlier in the file silently outranks a permission later in it |
 | Known hazard: example lists | Naming object categories near a staging permission reads as a menu and gets them *added* to the room |
 | Known hazard: cutting length | Removing a concrete noun in favour of a general principle silently drops the behaviour. Cut prose, keep nouns |
 | The fingerprint is the trail | `#xxxxxxxx` in each log answers *which wording produced this image*. A per-photo gate comment is recorded **beside** it, never folded into it |
 
-## `1 - edit/enhance.py`
+## `_config/fal.py`
+
+The trip to fal.ai, and every constant that governs it. Split out of `enhance.py`
+on 2026-08-01 so that phases 1 and 3 could share it **without one importing the
+other** — `retoque.py` importing `enhance.py` would make phase 3 depend on phase 1,
+and the two would stop being independent contracts, which is why they were split.
+
+| | |
+|---|---|
+| Depended on by | `1 - edicao/enhance.py`, `2 - retoque/retoque.py` |
+| Owns | `DEFAULT_MODEL`, `QUALITY`, `TARGET_LONG_EDGE`, `UPLOAD_*`, `DOWNLOAD_TIMEOUT`, `RATIOS`, `EnhanceError` |
+| **Constants are shared** | Change `QUALITY` and both phases change. If one ever needs its own, give it its own constant there rather than a per-folder copy |
+| `download()` is atomic | Writes `<dest>.part`, then `os.replace()`. **Load-bearing for phase 3**, where the destination *is* the image just uploaded as input: a failed download must not be able to leave the job with no `_edit.jpg` |
+| `payload_for()` branches on family | gpt-image-2 takes `image_size` + `quality`; nano-banana takes `aspect_ratio` + `resolution` + `seed`. Both phases need the same branch |
+| `url_alive()` | A `HEAD` (~200ms) before reusing a CDN URL from an old log, against a ~4s re-upload. Being wrong means a billed request with a broken reference |
+| Cost is not estimated anywhere | fal prices by quality tier **and** pixel count. Check fal's dashboard. Do not add an estimator — a `--dry-run` existed until 2026-07-27 and watching real results was trusted over its preview |
+
+## `1 - edit/1 - edicao/enhance.py` — phase 1
 
 | | |
 |---|---|
 | Depended on by | `batch.py` (imports `run`, `DEFAULT_MODEL`, `EnhanceError`) |
-| Contract `batch.py` relies on | `run()` accepts `emit=` and `extra=`, and raises `EnhanceError` instead of exiting. A `sys.exit` inside a worker thread kills nothing and hangs everything |
-| `extra=` | The gate comment, appended to the prompt for that photo's re-run only, and logged separately from the fingerprint |
+| Contract `batch.py` relies on | `run()` accepts `emit=` and raises `EnhanceError` instead of exiting. A `sys.exit` inside a worker thread kills nothing and hangs everything |
+| Took a per-photo `extra=` until 2026-08-01 | It appended the gate comment to `PROMPT.md`'s text — which meant an absolute rule earlier in the file outranked the human's own sentence. That is now phase 3's job, with no `PROMPT.md` at all |
 | `EnhanceError.phase` | `before` or `after` the request reached fal — which is whether it may have been billed. It is what lets a run say "2 falhas (1 antes do envio, 1 depois)" instead of leaving you to open sixty logs |
 | Where results go | The photo's own folder by default. That is what keeps a job self-contained |
 | Stays standalone | Never renames, moves or archives. Runs against any path, including one outside the project |
-| Cost is not estimated anywhere | fal prices by quality tier **and** pixel count. Check fal's dashboard. Do not add an estimator — a `--dry-run` existed until 2026-07-27 and watching real results was trusted over its preview |
+| **Writes the line phase 3 parses** | `SOURCE_URL_LABEL` — see `<name>_log.md` below |
+
+## `1 - edit/2 - retoque/retoque.py` — phase 3
+
+| | |
+|---|---|
+| Depended on by | `batch.py` (imports `run`) |
+| Depends on | `fal`, `stage.result_of` / `shelve_result`, and **`<name>_log.md` as an input** |
+| Sends | `image_urls = [the _edit, the original]`, in that order, with `PROMPT.md`'s frame + the human's sentence and nothing else |
+| **Order is a contract with its `PROMPT.md`** | The frame names them "image 1" and "image 2". Swap them in the payload and it describes the wrong picture |
+| Forces `num_images = 1` | A retouch answers one instruction; variants are a phase-1 tuning tool |
+| `image_size` from the `_edit` | Already ~2K at the source's ratio, so the proportion never drifts across rounds — and the source file never has to be opened when its URL is reused |
+| Deletes nothing | The `_edit.jpg` is the input; the old one is **shelved** as `_edit_rN.jpg` by `stage.shelve_result()` |
+| Download-then-swap | Writes `<stem>_edit.new.jpg`, then shelves, then renames into place. Two atomic renames, so a failed download can never leave the photo with no edit |
+| Cannot widen the frame | `image_size` is fixed to the edit's proportion, so "expande a direita" recomposes inside the same rectangle. Widening would need a `ratio=` token in `gate.py`'s `OPT_RE`. Not built — see `2 - retoque/CONTEXT.md` |
+
+## `Job_NNNN/<name>_log.md` — a record that became an input
+
+**Read this before changing anything about a log's format.** Until 2026-08-01 the
+per-photo log was write-only, like every other log in this project — `ledger.py`'s
+docstring still states the rule, and it is still right everywhere else. This one
+file is the exception, and it is the single most breakable edge in the pipeline
+because breaking it **fails silently and still works**.
+
+| | |
+|---|---|
+| Written by | `1 - edicao/enhance.py` — the whole file, from scratch, on every phase-1 run |
+| Appended to by | `2 - retoque/retoque.py` — one `## Retoque N` block per retouch, never rewriting what is above |
+| **Parsed by** | `2 - retoque/retoque.py`, for exactly one line: `\| Uploaded source \| <url> \|` |
+| The pair that must agree | `enhance.SOURCE_URL_LABEL` writes it, `retoque.SOURCE_URL_RE` reads it. **Change one and change the other** |
+| What breaks if they disagree | The original is uploaded a second time on every retouch. ~4s and a few cents per photo, no error, no wrong output — the kind of breakage nobody notices for months |
+| Why the first match wins | Phase 1's block is at the top and its URL is the original photograph. A later retouch block may record a re-upload: same image, but not the authoritative row |
+| Why a retouch must not delete it | It is where that URL lives. This is why stage 1's `--rework` deletes nothing, unlike every other rejection here |
+| Deleted by hand? | `retoque.py` starts a fresh log saying phase 1's block is missing, and uploads the original. Degraded, never fatal |
+| `--rework` no longer deletes it | It did until 2026-08-01, together with the `_edit.jpg` — which destroyed the URL at the exact moment it became useful |
 
 ## `1 - edit/batch.py` and `2 - marca dagua/batch.py`
 
@@ -217,11 +274,15 @@ Siblings. **A fix to one should be checked against the other.**
 | Own | job selection, the skip rule, the gate fold, `--rework`, `--approve`, the move |
 | **Neither advances on its own** | Only `--approve` calls `advance()` |
 | **The order is record, delete, move** | The gate is folded into `gate.md` and a ledger row written *before* the scratch files go and the folder moves. It used to be the reverse: `approve()` unlinked the page and the rework list and *then* archived, destroying the rejection history at the exact moment it became permanent. A crash must leave a recorded decision with unfinished work, not finished work with no record |
-| `--rework` has no machinery | It deletes the rejected results, and deleting one is what makes the ordinary skip rule run that photo again. No retry list, no state file, nothing that can disagree with disk |
+| Stage 2's `--rework` has no machinery | It deletes the rejected results, and deleting one is what makes the ordinary skip rule run that photo again. No retry list, no state file, nothing that can disagree with disk |
+| **Stage 1's `--rework` is the exception** | Phase 3 *edits* the `_edit.jpg`, so the result is the input and deleting it destroys what the run needs. It passes an explicit list of stems instead, deletes nothing, and shelves the old edit. Do not "restore" the delete rule here |
+| Stage 1 refuses a mark with no comment | Before `fold_gate()` and before any spend — phase 3 *is* the comment. `gate.txt` is left intact so the marks survive being written on. Another draw from the fixed prompt is `--redo` |
 | `--approve` refuses on a hole | A photo with no result has nothing to show and so never appeared on the page |
 | `--approve` refuses on pending marks | Otherwise a rework list would be thrown away silently |
+| Stage 1's `--approve` drops the shelved edits | `stage.drop_shelved()`, said out loud with a count. They exist so a human can choose between retouch rounds; once the job has moved there is nothing to choose |
 | Stage 1 threads, stage 2 does not | Network wait vs. CPU. Do not "fix" stage 2 to use a pool |
-| Gate comments ride in memory | From `--rework` into the run of the same invocation. Nothing writes them where a later run could read them back: a plain re-run uses `PROMPT.md` alone, which is the honest default |
+| Gate comments ride in memory | From `--rework` into the run of the same invocation. Nothing writes them where a later run could read them back; the durable record is `gate.md` and the `_log.md` block |
+| One ledger for both phases | The phase goes in the **detail**; the event stays `run`. `ledger.EVENTS` is closed and identical in all four stages, and `grep -n "Job_0023" */ledger.md` is a job's life *in order* |
 
 ## `1 - edit/review.py` and `2 - marca dagua/review.py`
 

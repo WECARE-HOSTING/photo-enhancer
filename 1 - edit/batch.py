@@ -24,15 +24,25 @@ partial failure a retry of just the failures. `--redo` overrides that.
 to send a client" are different questions and only the first one a script can
 answer. So a finished run writes `review-edit.html` and stops:
 
-    batch.py            run it -> review-edit.html
+    batch.py            phase 1 — every photo, one fixed prompt -> review-edit.html
     (look at it)        mark what is not good enough, write why, Copiar -> gate.txt
-    batch.py --rework   throws those edits away and redoes only them, with your
-                        comment appended to that photo's prompt
+    batch.py --rework   phase 3 — only those, each with your sentence as the
+                        entire prompt, editing the `_edit` and not the source
     batch.py --approve  you said yes -> 2 - marca dagua/
 
-`--rework` needs no machinery: deleting an `_edit.jpg` is exactly what makes the
-skip rule above run that photo again. No retry list, no state file, nothing that
-can disagree with the disk.
+**Phase 3 is not phase 1 again.** `2 - retoque/retoque.py` sends the `_edit.jpg`
+the human actually looked at, plus the original as a second reference, and their
+sentence with no rules attached — `1 - edicao/PROMPT.md` is not read at all,
+because the sentence exists precisely to override it.
+
+That is why `--rework` deletes nothing, unlike every other rejection in this
+project: the `_edit.jpg` is phase 3's **input**, and the `_log.md` holds the
+original's CDN URL that saves uploading the photo a second time. The edit it
+replaces is shelved as `_edit_rN.jpg`, and `--approve` discards those.
+
+**A photo marked back with no sentence stops the run**, before anything is
+recorded and before anything is spent — phase 3 *is* the sentence. Another draw
+from the fixed prompt is `--redo`, which is phase 1 again.
 """
 
 from __future__ import annotations
@@ -46,12 +56,19 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "_config"))
-import enhance  # noqa: E402
 import gate  # noqa: E402
 import ledger  # noqa: E402
 import paths  # noqa: E402
 import review  # noqa: E402
 import stage  # noqa: E402
+
+# The two phases this script drives, each from its own folder. Imported by path
+# rather than by a plain `import enhance` because the folder names have spaces and
+# digits in them — `1 - edicao` is not a Python identifier.
+sys.path.insert(0, str(paths.EDICAO_DIR))
+sys.path.insert(0, str(paths.RETOQUE_DIR))
+import enhance  # noqa: E402  — phase 1: the fixed PROMPT.md, every photo
+import retoque  # noqa: E402  — phase 3: one free instruction, one photo
 
 SUFFIX = "_edit"
 STAGE = HERE.name
@@ -62,15 +79,29 @@ STAGE = HERE.name
 WORKERS = 4
 
 
-def process(photo: Path, model: str, extra: str) -> "tuple[Path, str, str, list[str]]":
-    """Run one photo. Returns (photo, status, phase, its buffered output lines).
+def process(photo: Path, model: str,
+            instruction: str = "") -> "tuple[Path, str, str, list[str]]":
+    """Run one photo through phase 1, or through phase 3 if it carries a sentence.
 
-    Runs in a worker thread, so it must not print — lines go into a buffer the
-    main thread prints as one block.
+    Returns (photo, status, phase, its buffered output lines). Runs in a worker
+    thread, so it must not print — lines go into a buffer the main thread prints
+    as one block.
+
+    The branch is the whole difference between the two phases: with no
+    instruction, `enhance.run()` sends the source and the fixed prompt; with one,
+    `retoque.run()` sends the *edit* plus the original and that sentence alone.
     """
     lines: "list[str]" = []
     try:
-        enhance.run(photo, model=model, emit=lines.append, extra=extra)
+        if instruction:
+            edit = stage.result_of(photo.parent, photo, SUFFIX)
+            if edit is None:
+                raise enhance.EnhanceError(
+                    f"{photo.stem} tem comentário mas nenhum {SUFFIX}.jpg para "
+                    "retocar — rode a fase 1 nela primeiro")
+            retoque.run(photo, edit, instruction, model=model, emit=lines.append)
+        else:
+            enhance.run(photo, model=model, emit=lines.append)
     except enhance.EnhanceError as e:
         lines.append(f"FAILED      {e} — rode de novo para tentar esta de novo")
         return photo, "failed", e.phase, lines
@@ -183,6 +214,14 @@ def approve(job: Path) -> None:
     for scratch in (job / review.NAME, job / gate.NAME):
         if scratch.exists():
             scratch.unlink()
+    # The shelved retouch versions go too. They exist so a human can choose
+    # between rounds; once the job has moved there is nothing left to choose, and
+    # `3 - completed/` would otherwise fill with 2K images nobody opens. Said out
+    # loud, never silently — what happened stays in `gate.md` and each `_log.md`.
+    shelved = stage.drop_shelved(job)
+    if shelved:
+        print(f"descartado  {shelved} versão(ões) anterior(es) de retoque "
+              "(`_edit_rN.jpg`)")
     print(f"aprovado    {job.name} · {len(pairs)} foto(s)")
     stage.advance(job, paths.MARCA_DIR, paths.EDIT_DIR, len(pairs))
     print("\nAgora a marca d'água:\n  "
@@ -199,8 +238,9 @@ def main() -> None:
     ap.add_argument("--redo", action="store_true",
                     help="re-run photos that already have a result, overwriting it")
     ap.add_argument("--rework", action="store_true",
-                    help=f"read {gate.NAME}, throw away the edits it marks, and "
-                         "run just those again with your comments")
+                    help=f"phase 3: read {gate.NAME} and retouch just the photos "
+                         "it marks — each one's comment is the whole prompt, and "
+                         "it edits the result, not the source")
     ap.add_argument("--approve", action="store_true",
                     help="you looked at the page and it is good — move the job on")
     args = ap.parse_args()
@@ -215,34 +255,60 @@ def main() -> None:
         approve(job)
         return
 
-    extras: "dict[str, str]" = {}
+    instructions: "dict[str, str]" = {}
     if args.rework:
         marks, unknown = read_gate(job, required=True)
         if unknown:
             print(f"nota        {len(unknown)} linha(s) de {gate.NAME} não nomeiam "
                   f"foto de {job.name} e foram ignoradas: {', '.join(unknown[:4])}")
         back = [m for m in marks if m.back]
+
+        # Refuse BEFORE fold_gate() and before anything is sent. A photo marked
+        # with no sentence has nothing to send — phase 3 IS the sentence — and
+        # folding first would write a round into gate.md that never happened.
+        # gate.txt is left untouched so the marks survive to be written on.
+        silent = [m.key for m in back if not m.comment]
+        if silent:
+            sys.exit(
+                f"error: {len(silent)} foto(s) marcada(s) sem comentário:\n"
+                f"       {', '.join(silent[:8])}{' …' if len(silent) > 8 else ''}\n"
+                "       O que você escreve na caixa É a instrução inteira que a "
+                "fase 3 manda —\n       sem ela não há o que pedir. Abra "
+                f"{job.name}/{review.NAME}, escreva o porquê\n       de cada uma, "
+                "copie e cole de novo.\n\n"
+                "       Se você só quer outro sorteio com o prompt padrão, isso é "
+                "--redo,\n       que refaz a foto do zero a partir da original.")
+
         fold_gate(job, marks, approved=len(all_photos) - len(back))
-        # The comments ride to the run below in memory. Nothing writes them
-        # somewhere a later run could read back: a plain re-run uses PROMPT.md
-        # alone, which is the honest default.
-        extras = {m.key: m.comment for m in back if m.comment}
-        removed = stage.drop_results(job, [m.key for m in back], SUFFIX,
-                                     also=("_log.md",))
-        print(f"rework      {len(back)} foto(s) de volta, {removed} arquivo(s) "
-              f"apagado(s)"
-              + (f": {', '.join(m.key for m in back[:4])}"
-                 f"{' …' if len(back) > 4 else ''}" if back
-                 else " (só comentários, nada para refazer)"))
+        # The sentences ride to the run below in memory. Nothing writes them
+        # where a later run could read them back: a plain re-run is phase 1 with
+        # PROMPT.md alone, which is the honest default.
+        instructions = {m.key: m.comment for m in back}
+        print(f"retoque     {len(back)} foto(s) de volta: "
+              f"{', '.join(m.key for m in back[:4])}"
+              f"{' …' if len(back) > 4 else ''}")
+        # Nothing is deleted here, and that is the difference from every other
+        # rejection in this project. The `_edit.jpg` is phase 3's INPUT, and the
+        # `_log.md` carries the original's CDN URL that saves re-uploading it.
+        # The previous edit is shelved as `_edit_rN.jpg` by retoque.run().
+
         # Reset the paste target now that its marks are recorded in gate.md and
         # acted on. Leaving them there was a dead end: the page pre-filled itself
         # with photos that had already been redone, and --approve refused forever
         # because the file still asked for a rework it had already had.
         (job / gate.NAME).unlink(missing_ok=True)
 
-    photos = all_photos if args.redo else [
-        p for p in all_photos if not stage.is_done(job, p, SUFFIX)]
-    skipped = len(all_photos) - len(photos)
+    if args.rework:
+        # An explicit list, not the skip rule: phase 3's input is the `_edit.jpg`
+        # that the skip rule would take as "already done". Only the marked photos
+        # run, and each runs whether or not it has a result.
+        marked = set(instructions)
+        photos = [p for p in all_photos if p.stem in marked]
+        skipped = 0
+    else:
+        photos = all_photos if args.redo else [
+            p for p in all_photos if not stage.is_done(job, p, SUFFIX)]
+        skipped = len(all_photos) - len(photos)
 
     if not photos:
         print(f"{job.name}: as {len(all_photos)} foto(s) já têm resultado — "
@@ -253,7 +319,8 @@ def main() -> None:
         return
 
     workers = max(1, min(args.workers, len(photos)))
-    print(f"\n{job.name} · {len(photos)} foto(s)"
+    print(f"\n{job.name} · {'retoque' if args.rework else 'edição'} · "
+          f"{len(photos)} foto(s)"
           f"{f' ({skipped} já prontas, puladas)' if skipped else ''}"
           f" · {workers} por vez · {args.model}")
 
@@ -263,7 +330,8 @@ def main() -> None:
     errors: "list[str]" = []
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(process, p, args.model, extras.get(p.stem, "")): p
+        futures = {pool.submit(process, p, args.model,
+                               instructions.get(p.stem, "")): p
                    for p in photos}
         for n, future in enumerate(as_completed(futures), 1):
             photo, status, phase, lines = future.result()
@@ -286,12 +354,20 @@ def main() -> None:
     summary = f"{tally['ok']} ok · {tally['failed']} falhas{where} · {wall}"
     print(f"\n=== {job.name}: {summary} ({elapsed / len(photos):.1f}s por foto) ===")
 
-    stage.log_run(job, [f"Model: `{args.model}`", f"Result: {summary}"])
+    phase = "retoque" if args.rework else "edição"
+    stage.log_run(job, [f"Phase: {'3 — retoque' if args.rework else '1 — edição'}",
+                        f"Model: `{args.model}`", f"Result: {summary}"])
+    # One ledger for the whole stage, and the phase rides in the **detail** — the
+    # event stays `run`. `ledger.EVENTS` is a closed set, identical in all four
+    # stages so that `grep '| run |' */ledger.md` means one thing everywhere; a
+    # stage-specific sixth word would be the drift it exists to prevent. Nor one
+    # ledger per phase: `grep -n "Job_0023" */ledger.md` is a job's life *in
+    # order*, which is the only reason the file exists.
     ledger.append(paths.EDIT_DIR, job.name,
                   f"run {gate.rounds_so_far(job, STAGE) + 1}", len(photos),
-                  f"{summary} · `{args.model}`")
+                  f"{phase} · {summary} · `{args.model}`")
     write_review(job, args.model, wall)
-    paths.notify(f"{job.name} — edição", summary)
+    paths.notify(f"{job.name} — {'retoque' if args.rework else 'edição'}", summary)
 
     if tally["failed"]:
         whole = stage.failure_summary(errors)

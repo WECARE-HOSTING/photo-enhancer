@@ -18,7 +18,7 @@ The name it produces travels untouched from here to `3 - completed/`:
     NN        which physical room of that kind, in walkthrough order
     NNNN      the photo within that room, assigned once the picks are known
 
-Nothing downstream renames it. `1 - edit/enhance.py` only appends `_edit` and
+Nothing downstream renames it. `1 - edicao/enhance.py` only appends `_edit` and
 `2 - marca dagua/marca.py` only `_final`.
 """
 

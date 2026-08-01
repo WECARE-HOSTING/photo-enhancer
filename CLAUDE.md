@@ -13,12 +13,15 @@ a failed job — it misrepresents a property someone will rent or buy.
 ```
 0 - selection/     drop -> choose -> name -> develop. Keeps the shoot forever.
                    drop/, 6 scripts, ledger.md, CONTEXT.md
-1 - edit/          the fal.ai stage. PROMPT.md, enhance.py, batch.py, review.py
+1 - edit/          the fal.ai stage, in two phases around one gate.
+                   batch.py + review.py, ledger.md, CONTEXT.md
+                   1 - edicao/   fase 1: PROMPT.md fixo, toda foto. enhance.py
+                   2 - retoque/  fase 3: a frase do humano, uma foto. retoque.py
 2 - marca dagua/   the WeCare mark. marca.py, batch.py, review.py
 3 - completed/     the archive. index.md, archive.py, and the finished jobs
 _config/           .env (FAL_KEY, gitignored), .venv/, requirements.txt,
                    logos/, Seletor/RULES.md + AMBIENTES.md,
-                   paths.py ledger.py gate.py stage.py (shared by every stage)
+                   paths.py ledger.py gate.py stage.py fal.py (shared)
 _dependencies.md   what breaks what, when a file here changes
 ```
 
@@ -26,8 +29,12 @@ _dependencies.md   what breaks what, when a file here changes
 photos enters there too — `cull.py` recognises a finished selection and cuts
 nothing.
 
+**The two folders inside `1 - edit/` hold tooling, never a job.** A `Job_NNNN/`
+stays whole in `1 - edit/` — split it and stages 2 and 3 stop finding its files.
+
 Every numbered folder keeps a `ledger.md`: one row per thing that happened in
-it. `grep -n "Job_0023" */ledger.md` is a job's whole life, in order.
+it. `grep -n "Job_0023" */ledger.md` is a job's whole life, in order — so
+`1 - edit/` keeps **one** ledger for both its phases, with the phase in the row.
 
 ## Naming convention
 
@@ -60,7 +67,8 @@ folders and never collide. Photo numbers restart in every room.
 
 Nothing downstream renames anything: `enhance.py` only appends `_edit`,
 `marca.py` only `_final`. A re-run overwrites its own suffix — one photo, one
-current edit, one current mark.
+current edit, one current mark. The one extra name is `_edit_r1`, `_edit_r2`… —
+edits a retouch replaced, kept so you can go back, and discarded on approval.
 
 ## Routing
 
@@ -75,9 +83,12 @@ current edit, one current mark.
 | Turn the picks into a job | `0 - selection/develop.py <shoot>` | same → "The handoff" |
 | Run a job through the API | `1 - edit/batch.py` | `1 - edit/CONTEXT.md` → "Running it" |
 | Judge the edits, send some back | the job's `review-edit.html` → `gate.txt` → `batch.py --rework` | same → "The gate" |
-| Change how outputs look | `1 - edit/PROMPT.md` | same → "Editing PROMPT.md" |
-| Verify a prompt edit didn't break a rule | `enhance.py --check` (free, no photo) | same → "Editing PROMPT.md" |
-| Change model, quality, workers, size | `1 - edit/enhance.py` constants | same → "Config" |
+| Change how outputs look, for every photo | `1 - edit/1 - edicao/PROMPT.md` | that folder's `CONTEXT.md` → "Editing PROMPT.md" |
+| Fix one photo, in your own words | the box under it in `review-edit.html` — that text is the whole prompt | `1 - edit/2 - retoque/CONTEXT.md` |
+| Change what the retouch tells the model about the two images | `1 - edit/2 - retoque/PROMPT.md` | same |
+| Verify a prompt edit didn't break a rule | `1 - edicao/enhance.py --check` (free, no photo) | `1 - edicao/CONTEXT.md` → "Editing PROMPT.md" |
+| Change model, quality, size, timeouts | `_config/fal.py` constants (both phases) | `1 - edicao/CONTEXT.md` → "Config" |
+| Change how many photos run at once | `1 - edit/batch.py` → `WORKERS` | same |
 | Put the mark on a job | `2 - marca dagua/batch.py` | `2 - marca dagua/CONTEXT.md` |
 | The mark is too big, or in the wrong place | `2 - marca dagua/marca.py` constants, then `batch.py --rebrand` (free) | same → "Tuning the mark" |
 | Replace the logo art | `_config/logos/` — same filenames | same |
@@ -97,9 +108,10 @@ pipeline cannot make**, and each is a page in the job folder:
 #   tick your picks, 'Copiar picks', paste into picks.txt
 ./_config/.venv/bin/python "0 - selection/develop.py" "0 - selection/<shoot>"  # -> 1 - edit/Job_NNNN
 
-./_config/.venv/bin/python "1 - edit/batch.py"            # -> review-edit.html, and stop
-#   a / b flips before-after full screen; mark what is wrong, write why
-./_config/.venv/bin/python "1 - edit/batch.py" --rework   # redo just those
+./_config/.venv/bin/python "1 - edit/batch.py"            # fase 1 -> review-edit.html, and stop
+#   a / b flips before-after full screen; mark what is wrong, write WHAT TO CHANGE —
+#   that text is the whole prompt of the retouch, and may ask what fase 1 forbids
+./_config/.venv/bin/python "1 - edit/batch.py" --rework   # fase 3 -> só as marcadas
 ./_config/.venv/bin/python "1 - edit/batch.py" --approve  # -> 2 - marca dagua/
 
 ./_config/.venv/bin/python "2 - marca dagua/batch.py"           # -> review-marca.html

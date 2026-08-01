@@ -21,9 +21,15 @@ identical scale and position. A wrong edit that survives a side-by-side does not
 survive a flip.
 
     marque uma foto     ->  ela volta para a fila
-    escreva o porquê    ->  vira nota no gate.md e instrução extra no reprocessamento
+    escreva o que mudar ->  vira nota no gate.md E o prompt inteiro do retoque
     Copiar marcações    ->  cole em gate.txt, depois batch.py --rework
     Aprovar             ->  copia o comando que manda o trabalho adiante
+
+**The box is not a note, it is the prompt.** Phase 3 sends what is written there
+and nothing else — `1 - edicao/PROMPT.md` is not read — against the image on the
+*right*, with the original alongside it for reference. So it may ask for what
+phase 1 forbids: put the person back, shift the angle. A photo ticked with an
+empty box has nothing to send, and `--rework` refuses rather than guessing.
 
 Nothing here changes anything on disk. It copies text; you paste it. A page that
 could write into its own folder would be a second source of truth able to
@@ -102,8 +108,9 @@ def write(job: Path, pairs: "list[tuple[Path, Path]]", model: str, wall: str,
             f'<figcaption>depois</figcaption></figure>'
             f'</div>'
             f'<textarea class="note" rows="1" data-key="{gate.esc(stem)}" '
-            f'placeholder="o que houve nesta foto — vira nota no registro, e '
-            f'instrução extra se ela voltar"></textarea>'
+            f'placeholder="o que mudar na foto da direita — este texto é a '
+            f'instrução inteira, e pode pedir o que o prompt padrão não deixa '
+            f'(devolver uma pessoa, mudar o ângulo)"></textarea>'
             f'</div>')
     if open_room is not None:
         rows.append("</section>")
@@ -212,9 +219,12 @@ TEMPLATE = """<title>{job} — edição</title>
 <h1>{job} — edição</h1>
 <p class="sub">{n} foto(s) em {rooms} ambiente(s) · <code>{model}</code> ·
 {wall} · {stamp}<br>
-Marque as que <b>não</b> estão boas e escreva o porquê. Clique numa imagem para
-enchê-la na tela e aperte <b>a</b> / <b>b</b> para alternar antes e depois no
-mesmo lugar — é assim que se vê o que o lado a lado esconde.<br>
+Marque as que <b>não</b> estão boas e escreva na caixa <b>o que mudar</b>. Clique
+numa imagem para enchê-la na tela e aperte <b>a</b> / <b>b</b> para alternar antes
+e depois no mesmo lugar — é assim que se vê o que o lado a lado esconde.<br>
+O que você escreve <b>é o prompt inteiro</b> do reprocessamento, e ele fala da foto
+da <b>direita</b>: peça o que quiser, inclusive o que o prompt padrão proíbe.
+Uma foto marcada sem texto não roda.<br>
 {nav}</p>
 {warn}
 

@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Run a real estate photo through the fal.ai API with the fixed PROMPT.md.
+"""Phase 1 — every photo through fal.ai with the one fixed prompt in PROMPT.md.
 
-    ./_config/.venv/bin/python "1 - edit/enhance.py" "1 - edit/Job_0023/SALA_01_0001.jpg"
+    ./_config/.venv/bin/python "1 - edit/1 - edicao/enhance.py" "1 - edit/Job_0023/SALA_01_0001.jpg"
 
 Same prompt, every photo. No per-photo analysis or per-photo prompt file:
 the model reads the attached source image itself; PROMPT.md just tells it
 what to preserve, fix, remove, and tidy.
 
-The one exception is `extra=`: when you send a photo back at the gate with a
-comment, that sentence is appended to the prompt for **that photo's re-run
-only**. The log records the base fingerprint and the addendum separately, so
-"which wording produced this image" stays answerable. A comment that keeps
-coming back is a `PROMPT.md` edit waiting to happen — the addendum fixes one
-photo, the file fixes every future one.
+**Per-photo instructions are phase 3, not here.** When you send a photo back at
+the gate with a comment, `2 - retoque/retoque.py` handles it — and it does not
+read this file at all, because the comment exists precisely to override rules
+this prompt lays down. A comment that keeps coming back is a `PROMPT.md` edit
+waiting to happen: the retouch fixes one photo, this file fixes every future one.
 
 The source's name is kept and `_edit` is appended — `SALA_01_0001.jpg` becomes
 `SALA_01_0001_edit.jpg`, alongside `SALA_01_0001_log.md`. Both are written **next
@@ -20,14 +19,18 @@ to the source photo**, inside its job folder, so a job stays one self-contained
 bundle. Nothing here renames, moves or archives anything; that is `batch.py`'s
 job.
 
-A re-run overwrites the previous `_edit`. One photo has one current edit.
+A re-run overwrites the previous `_edit` and rewrites the log from scratch: a
+fresh phase-1 run is a fresh start. Phase 3 appends to that log instead, so the
+first run's header — and the source URL in it — survives every retouch.
 
 PROMPT.md is re-read from disk on every single photo, so editing it mid-batch
 takes effect on the very next photo. Each log records the prompt's fingerprint
 (a short hash), which is how you tell which wording produced the image you are
 looking at.
 
-To change model or behavior, edit the constants below, or PROMPT.md itself.
+The journey itself — prepare, upload, submit, download — lives in `_config/fal.py`
+and is shared with phase 3. To change model, quality or size, edit the constants
+there; to change what the model is asked for, edit PROMPT.md.
 """
 
 from __future__ import annotations
@@ -35,95 +38,43 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import mimetypes
 import re
 import sys
 import time
 from datetime import datetime, timezone
-from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageOps
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent.parent / "_config"))
+import fal  # noqa: E402
+import paths  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
-PROMPT_PATH = Path(__file__).resolve().parent / "PROMPT.md"
+from PIL import Image  # noqa: E402
+
+PROMPT_PATH = HERE / "PROMPT.md"
 
 # Everything in PROMPT.md from this marker onward is reference documentation
 # (the fal.ai request settings table) — not sent to the model as prompt text.
 PROMPT_END_MARKER = "===== END OF PROMPT"
 
-DEFAULT_MODEL = "openai/gpt-image-2/edit"
-NUM_IMAGES = 1   # set to 2-3 while tuning PROMPT.md to see the spread; 1 for batches
-QUALITY = "medium"            # gpt-image-2 family: auto / low / medium / high
-TARGET_LONG_EDGE = 2048       # gpt-image-2 family: always target ~2K output
-RESOLUTION = "2K"             # nano-banana family: 1K / 2K / 4K
-SEED = None                   # nano-banana family only; set an int to reuse
+# Re-exported so `batch.py` can keep saying `enhance.DEFAULT_MODEL` and
+# `enhance.EnhanceError` without knowing where the plumbing moved to.
+DEFAULT_MODEL = fal.DEFAULT_MODEL
+EnhanceError = fal.EnhanceError
+fail = fal.fail
 
-# Source photos are downscaled to this long edge before upload. The models
-# render at TARGET_LONG_EDGE and read the input through a vision encoder that
-# downscales anyway, so nothing is lost — but a 18 MB camera original takes
-# ~67s to upload where its 2048px version takes ~4s. This is the single
-# biggest speed win in the pipeline. Set to None to upload originals as-is.
-UPLOAD_LONG_EDGE = 2048
-UPLOAD_JPEG_QUALITY = 92
-
-# Per-attempt timeout when fetching the finished image. Generous, because the
-# first fetch warms fal's CDN edge and can legitimately take ~50s — but bounded,
-# so a hung fetch fails and retries instead of stalling the batch forever.
-DOWNLOAD_TIMEOUT = 120
-
-# fal aspect_ratio enum -> decimal. Used by the nano-banana-style family.
-RATIOS = {
-    "21:9": 21 / 9, "16:9": 16 / 9, "3:2": 1.5, "4:3": 4 / 3, "5:4": 1.25,
-    "1:1": 1.0, "4:5": 0.8, "3:4": 0.75, "2:3": 2 / 3, "9:16": 9 / 16,
-}
-
-class EnhanceError(Exception):
-    """One photo failed. Raised rather than exiting, so a batch can carry on.
-
-    `phase` says whether the request had already reached fal when it died —
-    `before` means nothing was billed, `after` means it may have been. At 2am,
-    after two failures in a batch of sixty, "did I pay for 60 or for 62" is a
-    real question and nobody is going to open sixty log files to answer it.
-    """
-
-    def __init__(self, msg: str, phase: str = "before"):
-        super().__init__(msg)
-        self.phase = phase
-
-
-def fail(msg: str, phase: str = "before") -> "None":
-    raise EnhanceError(msg, phase)
-
-
-def is_gpt_image(model: str) -> bool:
-    return "gpt-image" in model
-
-
-def nearest_ratio(width: int, height: int) -> str:
-    target = width / height
-    return min(RATIOS, key=lambda r: abs(RATIOS[r] - target))
-
-
-def round16(x: float) -> int:
-    return max(16, round(x / 16) * 16)
-
-
-def custom_image_size(src_w: int, src_h: int, long_edge: int = TARGET_LONG_EDGE) -> dict:
-    """Custom {width, height} matching the source's exact aspect ratio at ~2K."""
-    ratio = src_w / src_h
-    if ratio >= 1:
-        w, h = long_edge, long_edge / ratio
-    else:
-        w, h = long_edge * ratio, long_edge
-    return {"width": round16(w), "height": round16(h)}
+# The line every log carries, and the one thing another script parses out of a
+# log: `2 - retoque/retoque.py` reads it to reuse the original's CDN URL instead
+# of uploading the photo a second time. Change this wording and the retouch
+# silently starts re-uploading — see `_dependencies.md`.
+SOURCE_URL_LABEL = "Uploaded source"
 
 
 def load_prompt() -> "tuple[str, str]":
     """Read PROMPT.md fresh and return (prompt_text, 8-char fingerprint).
 
-    Re-read per photo on purpose: PROMPT.md is the one tuning surface in this
-    project and is expected to keep changing, so an edit lands on the next
+    Re-read per photo on purpose: PROMPT.md is the one tuning surface for this
+    phase and is expected to keep changing, so an edit lands on the next
     photo without restarting anything. The fingerprint goes into every log,
     which is what makes 'did that prompt change help?' answerable later.
     """
@@ -246,116 +197,26 @@ def check_prompt() -> int:
     return 0
 
 
-def prepare_upload(photo: Path) -> "tuple[bytes, str, int, int, tuple[int, int] | None]":
-    """Read the photo, honor its EXIF orientation, and downscale it for upload.
-
-    Returns (bytes_to_upload, mime_type, true_width, true_height, sent_size).
-    `sent_size` is None when the original bytes are uploaded untouched.
-    """
-    with Image.open(photo) as im:
-        im = ImageOps.exif_transpose(im)   # bake rotation in; measure what the model sees
-        src_w, src_h = im.size
-
-        if UPLOAD_LONG_EDGE is None or max(src_w, src_h) <= UPLOAD_LONG_EDGE:
-            return photo.read_bytes(), _mime(photo), src_w, src_h, None
-
-        small = im.convert("RGB")
-        small.thumbnail((UPLOAD_LONG_EDGE, UPLOAD_LONG_EDGE), Image.LANCZOS)
-        buf = BytesIO()
-        small.save(buf, "JPEG", quality=UPLOAD_JPEG_QUALITY)
-        return buf.getvalue(), "image/jpeg", src_w, src_h, small.size
-
-
-def _mime(photo: Path) -> str:
-    mime_type, _ = mimetypes.guess_type(str(photo))
-    return mime_type or "application/octet-stream"
-
-
-def upload(data: bytes, mime_type: str, file_name: str, attempts: int = 3) -> str:
-    """Put the source on fal's CDN, with retries.
-
-    Uploading crosses the network twice — a CDN auth-token refresh, then the
-    transfer — and either can time out transiently. Observed in practice, so
-    this retries rather than letting a blip kill the run (or, in a batch, that
-    photo). Nothing has been submitted at this point, so a retry costs nothing.
-    """
-    import fal_client
-
-    last = None
-    for attempt in range(1, attempts + 1):
-        try:
-            return fal_client.upload(data, mime_type, file_name=file_name)
-        except Exception as e:                  # noqa: BLE001 — retry any transport failure
-            last = e
-            if attempt < attempts:
-                time.sleep(2 * attempt)
-    fail(f"could not upload source after {attempts} attempts: "
-         f"{type(last).__name__}: {last}")
-
-
-def download(url: str, dest: Path, attempts: int = 3) -> None:
-    """Fetch the finished image, with a timeout and retries.
-
-    The first fetch of a fresh result can be slow — fal's CDN materializes the
-    object at its edge on that request, which has been measured at ~50s for a
-    file that then re-downloads in ~1s. That is normal and server-side. What
-    matters here is the timeout: a hung fetch must fail and retry rather than
-    stall a whole batch forever, which is what a bare urlretrieve would do.
-    """
-    import httpx
-
-    last = None
-    for attempt in range(1, attempts + 1):
-        try:
-            with httpx.stream("GET", url, timeout=DOWNLOAD_TIMEOUT,
-                              follow_redirects=True) as r:
-                r.raise_for_status()
-                with dest.open("wb") as fh:
-                    for chunk in r.iter_bytes(65536):
-                        fh.write(chunk)
-            return
-        except Exception as e:                  # noqa: BLE001 — retry any transport failure
-            last = e
-            dest.unlink(missing_ok=True)
-            if attempt < attempts:
-                time.sleep(2 * attempt)
-    # phase="after": by the time anything is downloaded the model has already
-    # run and fal has already billed for it. Reporting this as "before" would
-    # tell you at 2am that nothing was charged, which is the one thing the
-    # phase field exists to answer correctly.
-    fail(f"could not download result after {attempts} attempts: {last}",
-         phase="after")
-
-
-def rel(p: Path) -> str:
-    """Path for display: project-relative when it is inside the project."""
-    try:
-        return str(p.relative_to(ROOT))
-    except ValueError:
-        return str(p)
-
-
 def run(photo: Path, model: str = DEFAULT_MODEL,
-        emit=print, out_dir: "Path | None" = None,
-        extra: "str | None" = None) -> Path:
-    """Run one photo through the pipeline. Returns the saved image path.
+        emit=print, out_dir: "Path | None" = None) -> Path:
+    """Run one photo through phase 1. Returns the saved image path.
     Raises EnhanceError on failure.
 
     Results land in `out_dir`, which defaults to the photo's own folder — for
     a job that means `Job_NNNN/` gets the source, the enhanced image, and the
     log side by side.
 
-    Used by the CLI below and by batch.py. `emit` collects this photo's
-    progress lines — batch.py hands it a per-photo buffer so parallel runs
-    don't interleave their output.
+    Used by the CLI below and by `1 - edit/batch.py`. `emit` collects this
+    photo's progress lines — batch.py hands it a per-photo buffer so parallel
+    runs don't interleave their output.
 
-    `extra` is the comment written at the gate when this photo was sent back.
-    It is appended to PROMPT.md's text for this run only, and recorded in the
-    log beside the base fingerprint rather than folded into it.
+    There is no per-photo instruction here by design. A photo the human sent
+    back with a comment goes to `2 - retoque/retoque.py` instead, which edits
+    the result rather than the source and does not read PROMPT.md.
     """
     t_start = time.time()
     if not photo.is_absolute():
-        photo = (ROOT / photo).resolve()
+        photo = (paths.ROOT / photo).resolve()
     if not photo.exists():
         fail(f"no such photo: {photo}")
 
@@ -363,18 +224,9 @@ def run(photo: Path, model: str = DEFAULT_MODEL,
     stem = photo.stem
     prompt, prompt_id = load_prompt()
 
-    extra = (extra or "").strip()
-    if extra:
-        # Appended last so it reads as the most recent instruction. An absolute
-        # rule earlier in PROMPT.md still outranks it — see CONTEXT.md, "When an
-        # instruction is being ignored, look for the conflict".
-        prompt = f"{prompt}\n\nCorreção para esta foto: {extra}"
-
     t = time.time()
-    upload_bytes, mime_type, src_w, src_h, sent_size = prepare_upload(photo)
+    upload_bytes, mime_type, src_w, src_h, sent_size = fal.prepare_upload(photo)
     t_prepare = time.time() - t
-
-    gpt_image = is_gpt_image(model)
 
     emit(f"photo       {photo.name}  {src_w}x{src_h}  "
          f"({photo.stat().st_size / 1e6:.1f} MB)")
@@ -386,43 +238,14 @@ def run(photo: Path, model: str = DEFAULT_MODEL,
     else:
         emit(f"uploading   {src_w}x{src_h}  {len(upload_bytes) / 1e6:.2f} MB  (as-is)")
 
-    if gpt_image:
-        image_size = custom_image_size(src_w, src_h)
-        emit(f"quality     {QUALITY}   image_size {image_size['width']}x{image_size['height']}"
-             f"   (source {src_w / src_h:.3f})")
+    payload, setting_line = fal.payload_for(model, prompt, src_w, src_h)
+    emit(setting_line)
 
-        payload = {
-            "prompt": prompt,
-            "num_images": NUM_IMAGES,
-            "image_size": image_size,
-            "quality": QUALITY,
-            "output_format": "jpeg",
-        }
-    else:
-        ratio = nearest_ratio(src_w, src_h)
-        emit(f"resolution  {RESOLUTION}   aspect_ratio {ratio}"
-             f"   (source {src_w / src_h:.3f})")
-
-        payload = {
-            "prompt": prompt,
-            "num_images": NUM_IMAGES,
-            "aspect_ratio": ratio,
-            "resolution": RESOLUTION,
-            "output_format": "jpeg",
-        }
-        if SEED is not None:
-            payload["seed"] = SEED
-
-    from dotenv import load_dotenv
-    load_dotenv(ROOT / "_config" / ".env")
-    import os
-    if not os.environ.get("FAL_KEY"):
-        fail("FAL_KEY is not set. Put it in _config/.env (see _config/.env.example) or export it.")
-
+    fal.require_key()
     import fal_client
 
     t = time.time()
-    image_url = upload(
+    image_url = fal.upload(
         upload_bytes, mime_type,
         file_name=f"photo{'.jpg' if sent_size else photo.suffix or ''}",
     )
@@ -454,56 +277,45 @@ def run(photo: Path, model: str = DEFAULT_MODEL,
     for i, img in enumerate(images):
         suffix = "" if len(images) == 1 else f"_{i + 1}"
         dest = out_dir / f"{stem}_edit{suffix}.jpg"
-        download(img["url"], dest)
+        fal.download(img["url"], dest)
         with Image.open(dest) as out:
             out_w, out_h = out.size
         saved.append((dest, out_w, out_h, img["url"]))
-        emit(f"saved       {rel(dest)}  {out_w}x{out_h}")
+        emit(f"saved       {paths.rel(dest)}  {out_w}x{out_h}")
     t_download = time.time() - t
     t_total = time.time() - t_start
 
     log = out_dir / f"{stem}_log.md"
     lines = [
         f"# {stem} — Generation Log", "",
+        "_Phase 1 below, then one block per retouch. Written by "
+        "`1 - edicao/enhance.py`, appended to by `2 - retoque/retoque.py`._", "",
         "| | |", "|---|---|",
         f"| Run | {datetime.now(timezone.utc).isoformat(timespec='seconds')} |",
         f"| Source | `{photo.name}` · {src_w}×{src_h} |",
         f"| Model | `{model}` |",
         f"| Prompt | `PROMPT.md` · {len(prompt)} chars · fingerprint `#{prompt_id}` |",
     ]
-    if extra:
-        # Recorded beside the fingerprint, never folded into it. The fingerprint
-        # answers "which PROMPT.md wording was in force"; this answers "and what
-        # was added for this one photo".
-        lines.append(f"| Correção desta foto | {extra} |")
-    if gpt_image:
-        lines += [
-            f"| Quality | {QUALITY} |",
-            f"| Image size | {image_size['width']}x{image_size['height']} (source {src_w / src_h:.3f}) |",
-        ]
-    else:
-        lines += [
-            f"| Resolution | {RESOLUTION} |",
-            f"| Aspect ratio | {ratio} (source {src_w / src_h:.3f}) |",
-        ]
+    lines += fal.settings_row(model, payload, src_w, src_h)
     sent_desc = (f"{sent_size[0]}×{sent_size[1]} · {len(upload_bytes) / 1e6:.2f} MB (downscaled)"
                  if sent_size else f"{src_w}×{src_h} · {len(upload_bytes) / 1e6:.2f} MB (as-is)")
     lines += [
         f"| Sent to model | {sent_desc} |",
         f"| Timing | {t_total:.0f}s total — prepare {t_prepare:.1f}s · upload "
         f"{t_upload:.1f}s · generate {t_generate:.0f}s · download {t_download:.1f}s |",
-        f"| Uploaded source | {image_url} |",
+        # Parsed back by `2 - retoque/retoque.py` — see SOURCE_URL_LABEL.
+        f"| {SOURCE_URL_LABEL} | {image_url} |",
         "",
         "## Output", "",
     ]
     for dest, w, h, url in saved:
-        lines.append(f"- `{rel(dest)}` — {w}×{h} — [fal url]({url})")
+        lines.append(f"- `{paths.rel(dest)}` — {w}×{h} — [fal url]({url})")
     if result.get("description"):
         lines += ["", "## Model description of its own edit", "",
                   f"> {result['description']}"]
     lines += ["", f"## Prompt as sent (`#{prompt_id}`)", "", "```", prompt, "```", ""]
     log.write_text("\n".join(lines), encoding="utf-8")
-    emit(f"logged      {rel(log)}")
+    emit(f"logged      {paths.rel(log)}")
     emit(f"done        {t_total:.0f}s total")
     return saved[0][0]
 

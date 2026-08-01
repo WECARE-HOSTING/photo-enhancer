@@ -13,11 +13,18 @@ that difference and would stop being simpler than the two `main()`s it replaced.
 So each stage keeps its own `main()`, its own pool and its own printing, and
 borrows the job bookkeeping from here.
 
-The rework mechanism lives here and is the best idea in the codebase: **rejecting
-a photo means deleting its result.** `is_done()` asks the filesystem whether the
-file exists, `drop_results()` deletes the rejected ones, and the ordinary skip
-rule re-runs exactly those. No retry list, no state file, nothing that can
-disagree with the disk.
+**Rejecting a photo means deleting its result** — `is_done()` asks the filesystem
+whether the file exists, `drop_results()` deletes the rejected ones, and the
+ordinary skip rule re-runs exactly those. No retry list, no state file, nothing
+that can disagree with the disk. That is how stage 2 works, and how stage 1's
+phase 1 works.
+
+**Stage 1's phase 3 is the exception, and it has to be.** A retouch *edits the
+`_edit.jpg`* — the result is the input, so deleting it would destroy what the run
+needs. So `1 - edit/batch.py --rework` passes an explicit list of stems instead of
+leaning on the skip rule, and `shelve_result()` renames the old result aside rather
+than dropping it. Read `1 - edit/2 - retoque/CONTEXT.md` before assuming the delete
+rule is universal.
 """
 
 from __future__ import annotations
@@ -174,6 +181,54 @@ def drop_results(job: Path, stems: "list[str]", suffix: str,
             if p.exists():
                 p.unlink()
                 removed += 1
+    return removed
+
+
+SHELVED_RE = re.compile(r"_edit_r\d+\.jpg$", re.I)
+
+
+def shelve_result(job: Path, photo: Path, suffix: str) -> "Path | None":
+    """Rename this photo's current result aside, keeping it. Returns the new path.
+
+    The counterpart to `drop_results()`, for the one place where a rejected result
+    must not be deleted: a retouch edits the `_edit.jpg`, so the previous edit is
+    both the thing being replaced and the only way back if the retouch fixes what
+    you asked and breaks something else. Renaming makes that undo a free rename
+    instead of another paid run.
+
+    `_edit_r1`, `_edit_r2`… — never `_edit_1`, which is what `NUM_IMAGES > 1`
+    writes and what `result_of()` looks for. The two must not collide.
+
+    Returns None when there was nothing to shelve, which is not an error: a
+    retouch of a photo whose edit went missing still has work to do.
+    """
+    current = result_of(job, photo, suffix)
+    if current is None:
+        return None
+    n = 1
+    while (job / f"{photo.stem}{suffix}_r{n}.jpg").exists():
+        n += 1
+    dest = job / f"{photo.stem}{suffix}_r{n}.jpg"
+    current.rename(dest)
+    return dest
+
+
+def drop_shelved(job: Path) -> int:
+    """Delete every shelved edit in the job. Returns how many went.
+
+    Called by `--approve`: the versions exist so a human can choose between
+    retouch rounds, and once the job has moved on there is nothing left to choose.
+    Without this, `3 - completed/` fills with 2K images nobody will ever open.
+    What happened is still in `gate.md` and in each `_log.md`.
+
+    Matched by regex rather than by glob so that a hand-named file like
+    `SALA_01_0001_edit_red.jpg` is never swept up by a `*_edit_r*.jpg` pattern.
+    """
+    removed = 0
+    for p in sorted(job.glob("*_edit_r*.jpg")):
+        if SHELVED_RE.search(p.name):
+            p.unlink()
+            removed += 1
     return removed
 
 
