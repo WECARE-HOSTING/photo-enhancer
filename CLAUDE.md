@@ -78,7 +78,8 @@ edits a retouch replaced, kept so you can go back, and discarded on approval.
 | Change how photos get chosen | `_config/Seletor/RULES.md` | same → "Editing the rules" |
 | Change what rooms are called, or add a photographer's word | `_config/Seletor/AMBIENTES.md` | that file → "The vocabulary" |
 | One photo is filed under the wrong room | change it under the photo in `review-selection.html`, "Copy ambientes.md", re-run `cull.py --no-classify` | `0 - selection/CONTEXT.md` → "The contact sheet is the gate" |
-| Two rooms of the same kind came back as one | same place — `+ novo QUARTO` on the photos of the second one | same |
+| Two rooms of the same kind came back as one | `cull.py` asks the pictures — see `split_ambientes`. When it gets it wrong: `+ novo QUARTO` in `review-selection.html`, or the `Sala` column of `ambientes.md`. Your number always wins | same |
+| A room name is right but the description under it is not | the two are different passes and both are shown on the tile now — `viu` is the classifier, `escolheu` is the picker. A red mark means the picker says the photo is not of that room at all | same |
 | See what a room label maps to, free | `0 - selection/ambientes.py "Sala Cobertura"` | same |
 | Turn the picks into a job | `0 - selection/develop.py <shoot>` | same → "The handoff" |
 | Run a job through the API | `1 - edit/batch.py` | `1 - edit/CONTEXT.md` → "Running it" |
@@ -131,12 +132,20 @@ Run them when asked, and not before.
 
 **Quote every path** — the folder names contain spaces.
 
-**Only `1 - edit/` costs money.** Photos run at `medium` quality and ~2K,
+**`1 - edit/` is where the money is.** Photos run at `medium` quality and ~2K,
 concurrently, a minute or two each, almost entirely spent waiting on fal.ai; fal
 bills by quality tier *and* pixel count, so check fal's dashboard rather than
 expecting an estimate. A photo that failed has no `_edit`, and re-running
-retries only those. **Stage 0 and stage 2 are local and free** — `--rebrand` and
-`cull.py --no-classify` can be run as often as you like.
+retries only those.
+
+**Stage 0 costs cents, not nothing**, and it scales with the number of
+*photographs*, not rooms: a delivery whose filenames name no room is classified
+one photograph at a time, one call each. That is deliberate and must not be
+batched back — a batched answer that ran out of tokens used to file the missing
+photographs under whatever the rest of the batch voted for, which is how three
+photographs of a bed were delivered as `COZINHA`. `--vision` and the pass that
+tells two bedrooms apart add a few calls more. **`cull.py --no-classify` is the
+free re-run**, and stage 2 is local and free — `--rebrand` as often as you like.
 
 **A finished run is handed over as-is — never open, compare, or grade the
 results.** Point the user at the page and stop there. Judging the photos is

@@ -1,6 +1,7 @@
 # Dependencies — what breaks what
 
-_Last updated: 2026-07-31 (restructured into four process stages)_
+_Last updated: 2026-08-02 (stage 0 classification: one call per photograph, plus
+the pass that tells two bedrooms apart)_
 
 Small project, one file. Before changing anything below, read its "Depended on
 by" row. After changing it, run:
@@ -134,6 +135,7 @@ rooms are called; `RULES.md` is what you edit to change which photos get chosen.
 | | |
 |---|---|
 | Must not change | Their `=====` marker lines. Both loaders hard-fail without them rather than send the documentation below into a prompt |
+| `AMBIENTES.md` holds **three** prompts since 2026-08-02 | `CONFIRM` (is the label right?), `NAME` (what is this one photograph?), `SPLIT` (which of these are the same room?). They must appear in that order — each block ends where the next begins — and `ambientes.py` refuses to load if one is missing or out of order. They were one block, and sharing it was the bug: the text opens "photographs of ONE room" and "agree unless you can see that they are wrong", which is false with no label to confirm |
 | Slug shape is a contract | Uppercase and `_` only, **never a digit** — the digits are what let `AREA_SERVICO_01_0003` be parsed back apart |
 | `NAO_IDENTIFICADO` must exist | It is what an unnameable room falls back to |
 | Synonym gotcha | Matched by **where** the word appears, not how long it is. `Sala Cobertura` is a living room in the penthouse; preferring the longest keyword filed it as a roof terrace |
@@ -158,7 +160,13 @@ rooms are called; `RULES.md` is what you edit to change which photos get chosen.
 |---|---|
 | `ROOM_PATTERNS` | How a room label is read out of a filename. **Add a photographer's scheme here** |
 | `group_rooms()` runs **twice**, and the calls mean different things | The first is provisional, bucketing by the photographer's label to gather each room into one cheap batch. The second runs with `ambiente` in the key and is authoritative — that is what splits a stray photograph into its own room. Collapsing them silently removes the splitting |
-| Two prompts, two shapes, one endpoint | `classify()` asks *what room is this*; `choose()` asks *which of these is best*. An unlabelled folder is not evidence of a room — 28 files of common areas came back as one imaginary room until this split |
+| Three questions, one endpoint | `classify()` asks *what room is this*, `split_rooms()` asks *which of these are the same room*, `choose()` asks *which of these is best*. An unlabelled folder is not evidence of a room — 28 files of common areas came back as one imaginary room until the first split |
+| **Unlabelled classification is one call per photograph** | Not one per room. It batched twelve and asked for an array of twelve answers; the array truncated at `MAX_TOKENS` and every missing entry silently inherited the batch's majority vote. On `WC-00284` three photographs of a bed were delivered as `COZINHA`. A photograph now gets its own answer or an honest `NAO_IDENTIFICADO` — never another photograph's. **Never re-batch this to save calls** |
+| `labels_distinguish()` decides who owns room identity | The photographer's label goes in `group_rooms`'s key only where it actually separates two rooms of one ambiente. An *absent* label is not a distinguishing one: counting it as one put a veranda photo nobody had named into a `VARANDA_02` of its own. `split_ambientes` uses the same function to decide what to ask about, so the two cannot disagree about who is deciding |
+| The split pass never invents a room on doubt | Missing file, repeated file, unparseable answer, more than `SPLIT_MAX_IMAGES` photos — every failure resolves to *one room*. A merge is one click to fix on the sheet; a wrong `QUARTO_02` is a wrong filename at the client |
+| `CLASSIFY_TEMPERATURE = 0.0` | For naming and splitting only; ranking stays at `TEMPERATURE`. "Is there a bed in this picture" has an answer, and at 0.2 one cold run in three split a veranda into two rooms over four photos of one hammock. Three cold runs at 0.0 are byte-identical |
+| `PHASH_MAX_DISTANCE` cannot catch near-repeats | Measured on `WC-00284`: tightest genuine repeat at 20, tightest genuinely useful pair at 22. No threshold fits in that gap. The `quase repetida` rejection in `RULES.md` is where that judgement lives |
+| `cluster_scenes()` runs **twice** too | First on the photographer's label, then on the ambiente once one is known. On a delivery where every file carries the same label, the first bucket is the whole house |
 | Type A is protective | A delivery profiled as already-culled gets **no quota and no cuts**. This is now also the path an already-curated delivery takes, since `drop/` is the only way in |
 | `vision.py` never kills a run | It returns a verdict carrying an error instead of raising |
 | `VERTICAL_TOLERANCE_DEG = 15` | Load-bearing. At 32° it measured ceiling drying racks. Changing it invalidates every threshold in `RULES.md` |

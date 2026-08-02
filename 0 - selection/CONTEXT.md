@@ -1,16 +1,18 @@
 # 0 — Selection
 
-_Last updated: 2026-07-31_
+_Last updated: 2026-08-02_
 
 Where a photographer's whole delivery becomes the handful of photos worth paying
-to enhance. Everything here is free except one optional step: no photo is sent to
-`gpt-image-2` from this folder, ever.
+to enhance. No photo is sent to `gpt-image-2` from this folder, ever — the cost
+here is cents of vision calls, not dollars of image generation, and
+`--no-classify` runs the whole stage for nothing.
 
 **Input:** whatever the photographer sent — a link, a zip, a pile of zips, a
 folder of RAW, 300 JPEGs
 **Process:** fetch and verify → profile → proxies and measurements → **name every
-room and check the name against the picture** → quota per room → a vision model
-proposes the picks → you decide → develop the picks
+room and check the name against the picture** → **tell two rooms of the same kind
+apart** → quota per room → a vision model proposes the picks → you decide →
+develop the picks
 **Output:** `1 - edit/Job_NNNN/` holding `SALA_01_0001.jpg` … — the names the
 photos keep for the rest of their lives
 
@@ -198,14 +200,30 @@ It runs by default and is skipped by `--no-classify` or by having no `FAL_KEY`.
 The sheet and the catalogue both say plainly when the names were not checked,
 because an unverified name looks exactly like a verified one otherwise.
 
-**With no label, the question changes shape.** A group of photographs only exists
-because something put those files together, and when that something is a folder
-named `3_Condomínio/`, it is not evidence of a room. Asking "which room is this?"
-of a gym, a lobby and a pool deck at once gets one answer for all three — measured:
-28 files arrived as one imaginary `SALAO_FESTAS`. So an unlabelled group is asked to
-name **every photograph** instead, and the grouping that follows splits them into
-the seven real places they were. This is the type-C path, and it is the reason the
-type-C stub is gone.
+**With no label, the question changes shape — and so does the unit of a call.** A
+group of photographs only exists because something put those files together, and
+when that something is a folder named `3_Condomínio/`, it is not evidence of a
+room. Asking "which room is this?" of a gym, a lobby and a pool deck at once gets
+one answer for all three — measured: 28 files arrived as one imaginary
+`SALAO_FESTAS`. So an unlabelled photograph is named **on its own, in its own
+call**, and the grouping that follows splits them into the real places they were.
+This is the type-C path, and it is the reason the type-C stub is gone.
+
+One call per photograph is dearer than one per room and it is not optional.
+Twelve photographs used to go in together with an array of twelve answers asked
+for back; that array truncates at the token limit, and every photograph missing
+from it silently inherited whatever the rest of the batch had voted for. Measured
+on `WC-00284`: three photographs of a bed were delivered as `COZINHA`, and nothing
+in the output said a guess had been substituted for an answer. A photograph now
+gets its own answer or an honest `NAO_IDENTIFICADO` — never another photograph's.
+
+The prompt for that call is a **separate block** in `AMBIENTES.md` from the one
+that confirms a label, and separating them was half the fix. The confirm text
+opens "photographs of ONE room of ONE property" and "agree unless you can see that
+they are wrong"; both are false when there is no label, and the unlabelled path was
+being handed both. It asks for the fixtures in view — a bed, a cooktop, a toilet,
+a shower box — **before** the room name, because naming the room first is how a
+photograph of a bed becomes a kitchen.
 
 **A property reference is not a room, and one of them looks exactly like one.**
 WeCare names its properties `WC-NNNNN`, and `wc` is a perfectly good synonym of
@@ -222,12 +240,33 @@ belongs to, and where the answer came from. **It is the file to edit when one is
 wrong** — usually via the sheet rather than by hand — and it is read back on the
 next run.
 
-`Sala` is an input too — the `02` in `QUARTO_02`. It is the one answer nothing
-upstream can supply, so it is the one the sheet exists to collect. Unlike
-`Ambiente` it needs no second column to prove a person set it: no model
-recomputes a room number, only the grouping does, so feeding it back is stable.
-Changing a row's `Ambiente` discards its `Sala`, because a room number only means
-something inside the ambiente it was handed out in.
+`Sala` is an input too — the `02` in `QUARTO_02`. Changing a row's `Ambiente`
+discards its `Sala`, because a room number only means something inside the
+ambiente it was handed out in.
+
+**Which room of that kind is now asked of the pictures**, once every photograph
+knows what *kind* of room it is: one call per ambiente holding two or more
+photographs, showing all of them at once, asking which are the same physical room.
+Nothing else in the stage can answer it — every other source of a room's identity
+is a token in a folder or a filename, and a flat folder of camera filenames has
+none. A perceptual hash cannot stand in either, and not marginally: two views of
+one room from opposite corners hash further apart than two rooms furnished from
+the same shop.
+
+It is asked only where the photographer's own labels say nothing. Someone who
+filed into `2_Quarto_1/` and `3_Quarto_2/` walked the property and knows, and no
+model overrules that. An *absent* label is not a distinguishing one — a veranda
+photograph nobody had named used to land in a `VARANDA_02` of its own next to
+three photographs of the same hammock.
+
+**Every doubt resolves to one room.** A file missing from the answer, a file
+listed twice, more photographs than can be compared in one look: all leave the
+ambiente merged. A merge is one click to fix on the sheet; a `QUARTO_02` that does
+not exist is a wrong filename at the client.
+
+Your number still wins, and needs no second column to prove you set it: a row of
+the catalogue that still applies outranks the pass, so a `Sala` you typed survives
+every re-run and the pass is not even asked about that ambiente again.
 
 Two columns answer "did a person change this?", and one column cannot. `Ambiente`
 is the answer in force and the column you edit; `Visto` is what the last run's
@@ -268,7 +307,7 @@ room with a photograph delivered ends at zero.
 The keyword table, the priorities and the target all live in
 `../_config/Seletor/RULES.md`.
 
-### The vision pass asks one question per room, not per photograph
+### The ranking pass asks one question per room, not per photograph
 
 Choosing the best three of twenty-one kitchen shots is a **comparison**, and a
 comparison cannot be made one photograph at a time. `fal-ai/any-llm/vision` takes
@@ -277,9 +316,29 @@ angles than fit runs a tournament, with batches dealt by rank rather than sliced
 in file order — slicing puts the strong stretch in one heat and lets a good frame
 lose to weaker neighbours.
 
+(The naming pass above goes the other way for an unlabelled photograph — one call
+each. The unit of a call follows what has to be in view to answer the question,
+not a house style.)
+
 Measured: 19 rooms, 39 calls, 149 seconds, 52 of 56 slots proposed with a written
 reason in Portuguese. The four empty slots are the prompt working — it is allowed
 to return fewer when fewer deserve it.
+
+**It may refuse the room it was handed.** The ranking pass is told which room it
+is looking at, and until it could push back it simply wrote a reason agreeing with
+whatever it was told: a terrace filed under `COZINHA` was praised for *"destacando
+a geladeira"*, and the mislabel was invisible because that sentence was the only
+per-photo text on the sheet. It now returns `nao_pertence` for a photograph that is
+of somewhere else, and the tile shows both voices side by side — `viu` from the
+pass that named the room, `escolheu` from the pass that picked the photograph.
+When they disagree, the sheet says so in red and the run prints it.
+
+**Near-repeats are rejected by the prompt, not by a hash.** `quase repetida` is one
+of the outright rejections in `RULES.md`, and returning fewer photographs is
+preferred to returning two versions of one view. The threshold route was measured
+and abandoned: on `WC-00284` the tightest genuine repeat sat at Hamming 20 and the
+tightest genuinely useful pair at 22, so no value of `PHASH_MAX_DISTANCE` catches
+the first without swallowing the second. Telling one from the other needs eyes.
 
 **Measurements are sent as verdicts, never as numbers.** Handed `sharpness 1/30`,
 meaning rank 1 of 30, the model wrote *"nitidez muito baixa (1/10)"* and rejected
@@ -309,13 +368,15 @@ It cannot write into the folder — a browser page can't — so "Copiar picks" p
 the list on the clipboard and you paste it into `picks.txt`.
 
 **It is also where a room gets corrected**, and that is not a convenience. The
-line under each photograph is the room it will be delivered as, and changing it
-is the only way to say the thing the pictures alone can tell you: that two
-bedrooms which photograph alike are two different bedrooms. `+ novo QUARTO` gives
-the second one its own number, its own quota floor of three, and its own
-`QUARTO_02_NNNN.jpg`. Nothing upstream can work that out — a flat folder of
-`IMG_9660.HEIC` says nothing about how many bedrooms a house has, and the model
-that names the room is not asked to count them.
+line under each photograph is the room it will be delivered as, and it is the
+last place anyone looks before that name becomes a file a client receives.
+
+Two bedrooms which photograph alike are now separated by the pass described above,
+so this is the appeal rather than the only court. When it gets it wrong,
+`+ novo QUARTO` gives the second room its own number, its own quota floor of
+three, and its own `QUARTO_02_NNNN.jpg`; the same edit merges two it split. Your
+number outranks the model's on that row for good — the pass is not asked about
+that ambiente again.
 
 The second copy button hands back the whole of `ambientes.md` with the changed
 cells rewritten, to paste over the file. Rewritten rather than composed: the

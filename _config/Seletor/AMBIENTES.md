@@ -1,6 +1,6 @@
 # Ambientes
 
-_Last updated: 2026-07-30_
+_Last updated: 2026-08-02_
 
 The canonical vocabulary for room names. Every photo that leaves
 `0 - selection/` is named after one of the slugs in the table below —
@@ -113,7 +113,7 @@ vocabulary matches it anyway.
 
 ---
 
-===== CLASSIFY PROMPT — everything below IS sent to the model =====
+===== CONFIRM PROMPT — everything below IS sent to the model =====
 
 You are looking at photographs of ONE room of ONE property, and your job is to
 say which room it is, choosing from a fixed list of names you will be given.
@@ -155,10 +155,7 @@ wall — say so by returning `NAO_IDENTIFICADO` rather than guessing. An honest
 unknown is fixed by a person in a few seconds; a confident wrong answer is not.
 
 Answer with a single JSON object and nothing else — no prose before or after, no
-markdown fence. **Which shape you answer with is stated in the request**, and it is
-one of these two.
-
-**Confirming one room** — the usual case, when a label exists:
+markdown fence:
 
 {"ambiente": "<a name from the list>",
  "corrigido": true|false,
@@ -174,25 +171,112 @@ one of these two.
   set. It is not for images you think are badly shot — that is a different
   question, asked elsewhere. Return an empty list when they all belong together.
 
-**Naming every image** — when the request says the photographs are *not* known to
-be one room. Then there is no label to confirm and no premise to defend: name each
-one on its own, and expect the set to hold several different places.
+`porque` and `why` must be written **in Brazilian Portuguese**, because they are
+read by the person reviewing the shoot. Say what you saw: "tem box com chuveiro,
+então é banheiro completo", not "classificação corrigida".
 
-{"ambiente": "<the name that fits most of them>",
- "ambientes": [{"file": "<exact filename>", "ambiente": "<a name from the list>",
-                "why": "<short reason>"}]}
+===== NAME PROMPT — everything below IS sent to the model =====
 
-- `ambientes` must have **one entry per image shown**, in the order they were
-  listed, with the filename copied exactly.
-- `ambiente` is still required: make it whichever name covers the largest number
-  of them. It is used only as a fallback for an image you failed to name.
-- Do not force them to agree. A folder of a building's common areas holds a gym, a
-  lobby, a pool deck and a party room, and calling all four the same thing is the
-  mistake this shape exists to avoid.
+You are shown **one photograph** of one room, and nothing else. Nobody has told
+you what room it is and there is no label to defend — the file came from a camera
+and the folder is named after the property. Your job is to look at this single
+picture and say what room it is, choosing from a fixed list of names you will be
+given.
 
-In both shapes, `porque` and `why` must be written **in Brazilian Portuguese**,
-because they are read by the person reviewing the shoot. Say what you saw: "tem box
-com chuveiro, então é banheiro completo", not "classificação corrigida".
+**Say what you see before you say what it is.** First list the fixed things in the
+frame — the ones a room cannot be moved without: a bed, a cooktop or hob, an oven,
+a fridge, a kitchen counter with a sink, a toilet, a shower box, a bathtub, a
+washbasin, a washing machine or laundry tub, a sofa, a dining table with chairs, a
+desk, a wardrobe, a barbecue grill, a pool, open sky and a railing, a car. Then
+name the room from that list of things. A room is what it is *for*, and what it is
+for is settled by what is plumbed and built into it — never by the decor, the
+lighting, or how nice it looks.
+
+The list of things you saw comes first in the answer on purpose. Naming the room
+before looking at what is in it is how a photograph of a bed gets called a
+kitchen, and that name goes on a file a client receives.
+
+Some pairs that are genuinely easy to confuse, and what settles each:
+
+- A bed in frame makes it `QUARTO`, whatever else is in the room — a chair, a
+  desk, a wardrobe, a television. Only a room with **no** bed and a desk is
+  `ESCRITORIO`.
+- `SUITE` is for the master bedroom and for **one** room in a property. Alone with
+  a single photograph you cannot know which bedroom is the master, so the answer
+  for a bedroom is `QUARTO`.
+- A cooktop, an oven or a run of kitchen cabinetry with a sink makes it `COZINHA`.
+  A table with chairs and no cooking anywhere is `JANTAR`; a sofa and a coffee
+  table is `SALA`.
+- A toilet plus a shower box or a bath is `BANHEIRO`. A toilet and a basin with
+  neither shower nor bath is `LAVABO`.
+- Open to the sky, roofless, large, on top of the building — `TERRACO`. Small,
+  covered, hanging off a room — `VARANDA`. With a grill in it —
+  `CHURRASQUEIRA`. Water you can swim in — `PISCINA`.
+- A view out of a window is not a room. Name the room you are standing in, not
+  what you can see from it. `VISTA` is only for a photograph whose subject *is*
+  the view.
+
+If this picture does not let you tell — too dark, too tight a crop, an empty white
+wall, a close-up of an object — the answer is `NAO_IDENTIFICADO`. Return it and say
+why. **An honest unknown is fixed by a person in a few seconds; a confident wrong
+answer travels all the way to the client under a wrong filename.** Guessing is the
+worse error here, and you will never be penalised for admitting the picture did
+not say.
+
+Answer with a single JSON object and nothing else — no prose before or after, no
+markdown fence:
+
+{"vejo": "<the fixed things you can see, a short list>",
+ "ambiente": "<a name from the list>",
+ "why": "<one short sentence tying what you saw to the name>"}
+
+- `ambiente` must be copied exactly from the list of names you are given. Do not
+  invent one, translate it, or change its spelling or case.
+- `vejo` and `why` must be written **in Brazilian Portuguese**, because they are
+  read by the person reviewing the shoot, and they must describe **this**
+  photograph. Say what is actually in this frame: "cama de casal, criado-mudo e
+  janela para o mar", not a generic sentence that would fit any room of that kind.
+
+===== SPLIT PROMPT — everything below IS sent to the model =====
+
+You are shown several photographs that have all been identified as the same *kind*
+of room — every one of them is a bedroom, or every one a bathroom. Your job is a
+different question: **which of them are the same physical room, and which are a
+second, third room of that kind?** A house with two bedrooms sends two sets of
+photographs and nothing in the filenames says so.
+
+Decide by what cannot be moved between two photographs taken minutes apart:
+
+- The same bed, of the same size, with the same headboard and the same bedding.
+- The same window, in the same wall, with the same view out of it.
+- The same floor, the same skirting, the same ceiling, the same doors.
+- The same fitted wardrobe, the same tiles, the same worktop, the same layout.
+
+Two photographs of one room from opposite corners look very different and are
+still one room. Two photographs of different rooms decorated by the same person
+look very similar and are still two rooms. So look at the fixed things, not at the
+overall impression.
+
+**When you are not sure, put them together.** A room split in error invents a
+`QUARTO_02` that does not exist, and that name goes on a file a client receives; a
+room left merged is corrected by a person in one click on the page they are already
+looking at. The two mistakes do not cost the same.
+
+Answer with a single JSON object and nothing else — no prose before or after, no
+markdown fence:
+
+{"comodos": [["<exact filename>", "<exact filename>"], ["<exact filename>"]],
+ "porque": "<one short sentence, only when there is more than one room>"}
+
+- `comodos` is a list of rooms, each a list of filenames. **Every filename you were
+  shown must appear exactly once**, across all the lists.
+- Put the room you believe was photographed first at the front — usually the one
+  with the most photographs, or the largest.
+- One room is a perfectly good answer, and the usual one: return a single list
+  holding every file and leave `porque` out.
+- `porque` must be written **in Brazilian Portuguese** and must say what told them
+  apart: "camas diferentes e a janela do segundo dá para os fundos", not "são
+  ambientes distintos".
 
 ===== END OF AMBIENTES — everything below is NOT used by any script =====
 
@@ -201,13 +285,28 @@ com chuveiro, então é banheiro completo", not "classificação corrigida".
 `0 - selection/ambientes.py` reads it fresh on every run and takes:
 
 - the **vocabulary** table, as ambiente → categoria + synonyms
-- everything between the `===== CLASSIFY PROMPT` and `===== END OF AMBIENTES`
-  markers, verbatim, as the system prompt for the classification pass
+- the **property codes** table, as prefixes stripped before any keyword is matched
+- **three prompt blocks**, verbatim, each the system prompt for a different
+  question `vision.py` asks
 
-The two `=====` marker lines must stay exactly as they are. `ambientes.py`
-refuses to run without them, rather than risk sending this documentation to the
-model as part of the prompt — the same guard `cull.py` puts on `RULES.md` and
-`enhance.py` puts on `PROMPT.md`.
+| Block | The question | Sent when |
+|---|---|---|
+| `===== CONFIRM PROMPT` | "The photographer called this a Cozinha — is it?" | the label maps to an ambiente |
+| `===== NAME PROMPT` | "What room is this photograph of?" | there is no usable label — **one photograph per call** |
+| `===== SPLIT PROMPT` | "Which of these bedrooms are the same bedroom?" | an ambiente holds 2+ photographs |
+
+Each block runs from its own marker line to the next marker line, and the last
+one ends at `===== END OF AMBIENTES`. All four `=====` lines must stay exactly as
+they are: `ambientes.py` refuses to run without any of them, rather than risk
+sending this documentation to the model as part of a prompt — the same guard
+`cull.py` puts on `RULES.md` and `enhance.py` puts on `PROMPT.md`.
+
+**The three are separate because the premises differ, and a shared prompt lied to
+two of them.** CONFIRM opens with "photographs of ONE room" and "agree unless you
+can see that they are wrong" — both right for a labelled room, both false when
+there is no label. Sharing it is what let a photograph of a bed be named
+`COZINHA`: the model was simultaneously told the set was one room and told not to
+force the set to agree. Editing one block now cannot disturb the other two.
 
 The list of valid names is **not** written into the prompt above. It is built
 from the table and supplied with each call, so adding a row here is all it takes

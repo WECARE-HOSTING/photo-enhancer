@@ -35,7 +35,20 @@ SELECTION_DIR = Path(__file__).resolve().parent
 ROOT = SELECTION_DIR.parent
 AMBIENTES_PATH = ROOT / "_config" / "Seletor" / "AMBIENTES.md"
 
-PROMPT_START = "===== CLASSIFY PROMPT"
+# Three prompts, three questions, three blocks. Each runs from its own marker to
+# the next one in this list; the last runs to PROMPT_END.
+#
+# They were one block until 2026-08-02, and sharing it was a bug with a name: the
+# text opens "photographs of ONE room of ONE property" and "agree unless you can
+# see that they are wrong", which is right for confirming a label and false when
+# there is no label to confirm. The unlabelled path was handed both premises and
+# then told, eleven lines later, not to force the photographs to agree. Measured on
+# `WC-00284`: four photographs, three of them of a bed, came back `COZINHA`.
+PROMPT_MARKERS = [
+    ("confirm", "===== CONFIRM PROMPT"),   # a label exists — is it right?
+    ("name", "===== NAME PROMPT"),         # no label — what is this one photograph?
+    ("split", "===== SPLIT PROMPT"),       # which of these are the same room?
+]
 PROMPT_END = "===== END OF AMBIENTES"
 
 # A slug is uppercase letters and underscores, never a digit — the digits are what
@@ -123,8 +136,25 @@ class Vocabulary:
     categories: "dict[str, str]" = field(default_factory=dict)
     synonyms: "list[tuple[str, str]]" = field(default_factory=list)
     codes: "list[re.Pattern]" = field(default_factory=list)
-    prompt: str = ""
+    # One per block in PROMPT_MARKERS: confirm | name | split. Never merged into a
+    # single `prompt` again — see the comment on PROMPT_MARKERS for what that cost.
+    prompts: "dict[str, str]" = field(default_factory=dict)
     fingerprint: str = ""
+
+    @property
+    def confirm_prompt(self) -> str:
+        """"The photographer called this a Cozinha — is it?" A whole room at once."""
+        return self.prompts["confirm"]
+
+    @property
+    def name_prompt(self) -> str:
+        """"What room is this?" One photograph, no label, no premise to defend."""
+        return self.prompts["name"]
+
+    @property
+    def split_prompt(self) -> str:
+        """"Which of these bedrooms are the same bedroom?" One ambiente at a time."""
+        return self.prompts["split"]
 
     def is_valid(self, slug: "str | None") -> bool:
         return bool(slug) and slug in self.categories
@@ -207,19 +237,7 @@ def load(path: "Path | None" = None) -> Vocabulary:
             "classification prompt both live there")
     raw = path.read_text(encoding="utf-8")
 
-    if PROMPT_START not in raw or PROMPT_END not in raw:
-        raise AmbientesError(
-            f"{_rel(path)} is missing its `{PROMPT_START}` / `{PROMPT_END}` marker "
-            "lines. Without them the documentation below them would be sent to the "
-            "model as part of the prompt. Put them back before running.")
-    after = raw.split(PROMPT_START, 1)[1]
-    prompt = after.split("\n", 1)[1].split(PROMPT_END, 1)[0].strip()
-    if len(prompt) < 200:
-        raise AmbientesError(
-            f"{_rel(path)} has only {len(prompt)} characters of prompt between the "
-            "markers — that looks like a bad edit, not a prompt")
-
-    v = Vocabulary(prompt=prompt,
+    v = Vocabulary(prompts=_prompts(raw, path),
                    fingerprint=hashlib.sha256(raw.encode()).hexdigest()[:8])
 
     for cells in _table_rows(raw):
@@ -260,6 +278,67 @@ def load(path: "Path | None" = None) -> Vocabulary:
     # contains when the positions tie.
     v.synonyms.sort(key=lambda t: -len(t[0]))
     return v
+
+
+def _prompts(raw: str, path: Path) -> "dict[str, str]":
+    """Cut AMBIENTES.md into its three prompt blocks. Raises on a bad edit.
+
+    Every marker has to be present and they have to appear in the order they are
+    declared, because each block is delimited by the *next* one: a `SPLIT` block
+    accidentally moved above `NAME` would otherwise be silently swallowed into its
+    neighbour and sent to the model as part of the wrong question.
+
+    Refusing to run is the right failure. The alternative — falling back to one
+    block, or to an empty prompt — sends either this file's documentation or
+    nothing at all to a model whose answer becomes a client's filename.
+    """
+    def marker_at(marker: str) -> "int | None":
+        """Where `marker` begins its own line, or None.
+
+        A plain `raw.index` is wrong here and quietly so: the documentation at the
+        foot of this file names every marker in backticks, so a *deleted* marker is
+        still "found" — in the prose, below `PROMPT_END` — and the block it opens
+        comes back empty instead of the guard firing. Anchoring to the start of a
+        line separates the marker from every mention of it.
+        """
+        at = 0
+        for line in raw.splitlines(keepends=True):
+            if line.startswith(marker):
+                return at
+            at += len(line)
+        return None
+
+    found = [(key, marker, marker_at(marker)) for key, marker in PROMPT_MARKERS]
+    end_at = marker_at(PROMPT_END)
+    missing = [m for _, m, at in found if at is None]
+    if missing or end_at is None:
+        missing += [PROMPT_END] if end_at is None else []
+        raise AmbientesError(
+            f"{_rel(path)} is missing its marker line(s): {', '.join(missing)}. "
+            "A marker has to start its own line — naming one in prose is not the "
+            "same thing. Without them the documentation around them would be sent "
+            "to the model as part of a prompt. Put them back before running.")
+
+    starts = [(key, at) for key, _, at in found]
+    if [at for _, at in starts] != sorted(at for _, at in starts) or \
+            starts[-1][1] > end_at:
+        raise AmbientesError(
+            f"{_rel(path)} has its prompt blocks out of order. They must appear as "
+            + " then ".join(m for _, m in PROMPT_MARKERS)
+            + f", then {PROMPT_END}, because each one ends where the next begins.")
+    ends = [at for _, at in starts[1:]] + [end_at]
+
+    out: "dict[str, str]" = {}
+    for (key, at), end in zip(starts, ends):
+        # From the end of the marker's own line, so the marker text itself — which
+        # says "everything below IS sent to the model" — is not sent to the model.
+        body = raw[raw.index("\n", at) + 1:end].strip()
+        if len(body) < 200:
+            raise AmbientesError(
+                f"{_rel(path)} has only {len(body)} characters in its `{key}` prompt "
+                "block — that looks like a bad edit, not a prompt")
+        out[key] = body
+    return out
 
 
 def _table_rows(raw: str) -> "list[list[str]]":

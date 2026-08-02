@@ -170,12 +170,22 @@ Choose on these grounds, in this order of importance:
    across a counter, bottles and cleaning products on display, dish cloths,
    toiletries, anything dropped on the floor.
 
-4. **Contribution to the tour.** Prefer a set that shows the room from
-   *complementary* angles over several near-repeats of the strongest one. Three
-   photographs that each add something beat three excellent versions of one view.
+4. **Contribution to the tour.** Every photograph you choose must show the guest
+   something the others do not. Three photographs that each add something beat
+   three excellent versions of one view, and this is not a tie-breaker to apply
+   after the fact — it decides your second and third pick outright. Having chosen
+   the best photograph, ask of each remaining one: *what does this show that the
+   one I already have does not?* If the honest answer is "the same thing, from a
+   few steps to the left", it is not a pick, however good it is on its own.
 
 Reject outright, no matter how attractive the photograph is otherwise:
 
+- **A photograph that repeats one you have already chosen** — the same wall, the
+  same corner, the same view from a few degrees or a few steps away. Only one of
+  the two can be a pick. Say so with `quase repetida`, and prefer returning fewer
+  photographs to returning two versions of one view: an empty slot costs the
+  listing nothing, and a gallery that shows the same corner twice reads as a
+  property with less to show than it has.
 - An open or prominent toilet. Bathroom photographs should lead with the vanity,
   the shower or the bath; the toilet belongs cropped out or lidded and marginal.
 - A bed that reads as unmade — creased duvet, slack sheets, pillows at different
@@ -185,6 +195,15 @@ Reject outright, no matter how attractive the photograph is otherwise:
   as if the building were collapsing inward.
 - A view so wide that near objects are grotesquely stretched at the frame edges.
 - A photograph too blurred to be usable.
+
+**The room name you are given may be wrong, and you are allowed to say so.** It
+was decided by a different pass, from the pictures, and it is occasionally
+mistaken. If a photograph is plainly not of the room named — a terrace among the
+kitchen photographs, a bedroom among the living room ones — put it in
+`nao_pertence` and do not choose it. Do not write a reason that goes along with
+the name: describing a terrace as a good view of the kitchen hides the mistake
+under a caption that agrees with it, and the person reviewing then has no way to
+catch it. Judging the photograph is your job; the room name is only context.
 
 Levelness and lens geometry are measured from the pixels for you and supplied
 with each photograph as a plain verdict — `level`, `verticals splay badly`,
@@ -201,7 +220,8 @@ markdown fence:
 
 {"picks": [{"file": "<exact filename>", "rank": 1, "purpose": 0-10,
             "staging": 0-10, "reason": "<one short sentence>"}],
- "rejected": [{"file": "<exact filename>", "why": "<short reason>"}]}
+ "rejected": [{"file": "<exact filename>", "why": "<short reason>"}],
+ "nao_pertence": [{"file": "<exact filename>", "why": "<what room it really is>"}]}
 
 Rules for the answer:
 
@@ -216,6 +236,9 @@ Rules for the answer:
   trabalho inteiro com a bancada limpa", not "boa foto".
 - `rejected` is for photographs that hit one of the outright rejections above.
   You do not need to list everything you simply did not pick.
+- `nao_pertence` is for photographs that are of a *different room* — not for
+  photographs you merely disliked, which is what `rejected` is for. Return an
+  empty list when they all belong.
 
 ===== END OF RULES — everything below is NOT used by any script =====
 

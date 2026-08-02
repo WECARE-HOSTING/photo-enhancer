@@ -80,6 +80,23 @@ MAX_BRACKET_SIZE = 9
 # corner from a tripod nudged 10cm land within ~10; genuinely different angles
 # of one room sit well above it. Needs calibrating per photographer — the run
 # prints the cluster-size spread so the effect of changing it is visible.
+#
+# **Do not raise this to catch near-repeats.** Measured on `WC-00284`, every
+# within-room pair, against a human reading of which are really repeats:
+#
+#     10  30 / 31   same bedroom, near-identical      merged
+#     12  32 / 33   same bedroom, near-identical      merged
+#     16  29 / 31   same bedroom, useful second angle kept
+#     20   2 / (untitled)  the veranda repeat the picker itself called
+#                          `quase repetida`                          kept
+#     22   7 / 9    living room, genuinely different  kept
+#
+# The tightest genuine repeat sits at 20 and the tightest genuinely useful pair
+# at 22. There is no threshold in that gap that catches the first without
+# swallowing the second, and this is a two-point margin on eighteen photographs —
+# noise, not a signal. A hash cannot tell "same corner twice" from "the other end
+# of the same room"; that judgement needs eyes, and it is made where it belongs,
+# by the ranking pass in `RULES.md` under the `quase repetida` rejection.
 PHASH_MAX_DISTANCE = 12
 
 # Geometry thresholds, the room quota, and the vision prompt all live in
@@ -364,6 +381,11 @@ class Scene:
     ambiente_source: str = ""          # keyword | filename | vision | manual
     ambiente_note: str = ""
 
+    # *Which* room of that kind, when a model worked it out by looking. 1 means
+    # "no opinion", never "explicitly the first" — see `group_rooms.sala_hint`,
+    # which is where this is read and where your own `ambientes.md` outranks it.
+    sala_hint: int = 1
+
     # Filled by the vision pass, when it runs. `chosen` is what pre-ticks the
     # tile; `reason` is the sentence that justifies it, in Portuguese, and travels
     # into `selection.md`.
@@ -372,6 +394,11 @@ class Scene:
     rejected_why: str = ""
     purpose: "int | None" = None
     staging: "int | None" = None
+
+    # The ranking pass's objection to the room it was told this photograph is of.
+    # The one signal in the run that crosses the two model passes, and the reason
+    # it exists: a wrong ambiente used to arrive with a caption agreeing with it.
+    not_this_room: str = ""
 
     @property
     def lead(self) -> "ingest.Facts":
@@ -677,17 +704,29 @@ def hamming(a: str, b: str) -> int:
     return bin(int(a, 16) ^ int(b, 16)).count("1")
 
 
-def cluster_scenes(scenes: "list[Scene]") -> int:
+def cluster_scenes(scenes: "list[Scene]", by_ambiente: bool = False) -> int:
     """Group scenes that show the same thing. Returns the cluster count.
 
     Clustering is confined to one room at a time. A bathroom and a bedroom can
     hash alike — both are small, bright, and mostly wall — and merging them
     would drop one of the two from the shortlist entirely. When the room labels
     are free and exact, refusing to cross them costs nothing.
+
+    **Which "room" that means changes once the pictures have been read**, and this
+    runs twice for that reason. The first pass has only the photographer's label,
+    and on a delivery where every file carries the same one — `casa lagoa-29.jpg`,
+    `casa lagoa-30.jpg` — that is not a room at all: the bucket is the whole house,
+    and the union-find is free to merge a bedroom into a kitchen. The second pass
+    runs after classification with `by_ambiente=True`, when there is a real room to
+    confine it to. It costs nothing — no API, no file reading, just pixels already
+    in hand — and without it the near-duplicate count on such a delivery is
+    measured across the wrong set, which is what put two views of one corner in the
+    same gallery.
     """
     buckets: "dict[str, list[Scene]]" = defaultdict(list)
     for s in scenes:
-        buckets[f"{s.area or ''}/{s.room or ''}"].append(s)
+        key = (s.ambiente or "") if by_ambiente else (s.room or "")
+        buckets[f"{s.area or ''}/{key}"].append(s)
 
     next_id = 0
     for group in buckets.values():
@@ -851,6 +890,32 @@ class RoomGroup:
         return self.slots > 1
 
 
+def labels_distinguish(scenes: "list[Scene]") -> "set[tuple]":
+    """Which `(area, ambiente)` pairs the photographer's own labels divide into rooms.
+
+    Two bedrooms filed into `2_Quarto_1/` and `3_Quarto_2/` are distinguished; a
+    flat folder where every file says `casa lagoa`, or says nothing, is not. The
+    question is asked per ambiente because that is the scope a room number lives
+    in — a delivery can label its bedrooms carefully and dump its terrace shots.
+
+    **An absent label is not a distinguishing one**, which is the whole reason this
+    is a function rather than a `!=`. On `WC-00284` one veranda photograph carried
+    no label while three others said `casa lagoa`; counting the absence as a
+    difference put it in a `VARANDA_02` of its own, though every picture shows the
+    same hammock against the same brick parapet.
+
+    Computed from the labels alone, so it answers the same on every run. An earlier
+    version derived this from whether the split pass had spoken, and that pass is
+    skipped once the catalogue is settled — so a second run of an unchanged
+    delivery produced a different set of rooms from the first.
+    """
+    seen: "dict[tuple, set]" = defaultdict(set)
+    for s in scenes:
+        if s.room:
+            seen[(s.area or "", s.ambiente or "")].add((s.room_order, s.room))
+    return {key for key, labels in seen.items() if len(labels) > 1}
+
+
 def group_rooms(scenes: "list[Scene]", rules: Rules,
                 vocab: "ambientes.Vocabulary | None" = None,
                 prior: "dict | None" = None) -> "list[RoomGroup]":
@@ -882,7 +947,17 @@ def group_rooms(scenes: "list[Scene]", rules: Rules,
     the same numbers come out that went in.
     """
     def sala_hint(s: "Scene") -> int:
-        """The catalogue's room number for this scene. 1 when it has nothing to say.
+        """This scene's room number. Yours first, then the model's, then 1.
+
+        Three sources, in that order of authority, and the order is the point:
+
+        1. **The `Sala` column of `ambientes.md`**, when its row still applies. You
+           wrote it, so nothing recomputes it.
+        2. **`s.sala_hint`**, set by `split_ambientes` — the pass that looks at the
+           bedrooms and says which are the same bedroom. It is the only source that
+           can answer this at all for a flat folder of camera filenames, where
+           nothing in a name or a folder distinguishes two rooms of one kind.
+        3. **1**, when neither has spoken.
 
         Not 0 — "no opinion" and "explicitly the first room" have to be the *same*
         key or they split one room in two. A photograph whose hint was discarded
@@ -907,23 +982,38 @@ def group_rooms(scenes: "list[Scene]", rules: Rules,
           comparing them does work — this is the case it was written for.
 
         Changing only the `Sala` leaves `Ambiente` and `Visto` agreeing, so
-        `edited` stays false and the number is kept. That is the whole feature.
+        `edited` stays false and the number is kept. That is the whole feature —
+        and it is also what keeps the split pass from ever overwriting you, without
+        needing a `Sala vista` column to prove which of you wrote the number. A row
+        that still applies wins; only when it does not does the model's answer get
+        a hearing.
         """
         if not prior:
-            return 1
+            return s.sala_hint
         row = next((prior[k] for k in
                     (ambientes.fold_name(f.path.name) for f in s.frames)
                     if k in prior), None)
         if not row or row.edited:
-            return 1
-        return row.sala if row.ambiente == s.ambiente else 1
+            return s.sala_hint
+        return row.sala if row.ambiente == s.ambiente else s.sala_hint
+
+    # The label earns a place in the key only where it actually separates rooms.
+    # Where it does not, leaving it in splits on a difference that is about
+    # filenames rather than about rooms, and `sala_hint` above — your catalogue,
+    # then the split pass — is left with nothing to decide.
+    divides = labels_distinguish(scenes)
 
     buckets: "dict[tuple, list[Scene]]" = defaultdict(list)
     for s in scenes:
+        if (s.area or "", s.ambiente or "") in divides:
+            room_key = (s.room_order if s.room_order is not None else 99,
+                        s.room or "unlabelled")
+        else:
+            room_key = (99, "")
         buckets[(s.area_order if s.area_order is not None else 99,
                  s.area or "",
-                 s.room_order if s.room_order is not None else 99,
-                 s.room or "unlabelled",
+                 room_key[0],
+                 room_key[1],
                  s.ambiente or "",
                  sala_hint(s))].append(s)
 
@@ -943,6 +1033,10 @@ def group_rooms(scenes: "list[Scene]", rules: Rules,
         else:
             priority, category = rules.category(room)
         lead = group[0]
+        # The label is still worth showing in the heading even where it was dropped
+        # from the key above — it is the photographer's own word for the place, and
+        # this sheet is read next to their delivery.
+        room = room or lead.room or ""
         out.append(RoomGroup(room=room, area=area or None, priority=priority,
                              category=category, clusters=clusters,
                              ambiente=ambiente or ambientes.UNKNOWN,
@@ -1164,8 +1258,21 @@ def tile(job: Path, s: Scene, g: RoomGroup, best: bool, siblings: int) -> str:
 
     marks = "".join(f'<span class="flag">{html.escape(x)}</span>' for x in s.flags)
     marks += "".join(f'<span class="warn">{html.escape(x)}</span>' for x in s.warns)
+
+    # The two model passes both get to speak here, and they are labelled, because
+    # they answer different questions and can disagree. Until they were shown side
+    # by side only the picker's sentence appeared — and the picker is *told* the
+    # room, so a misfiled photograph arrived with a caption agreeing with the
+    # mistake. `casa lagoa-5.jpg` sat under COZINHA praised for "destacando a
+    # geladeira" while the classification note, visible nowhere on this page, said
+    # it was a terrace with hammocks and a sea view.
+    if s.not_this_room:
+        marks += (f'<span class="flag">não é {html.escape(g.ambiente)}? '
+                  f'{html.escape(s.not_this_room)}</span>')
+    if s.ambiente_note:
+        marks += (f'<span class="saw"><b>viu</b> {html.escape(s.ambiente_note)}</span>')
     if s.reason:
-        marks += f'<span class="why">{html.escape(s.reason)}</span>'
+        marks += f'<span class="why"><b>escolheu</b> {html.escape(s.reason)}</span>'
 
     # `data-room` is what lets the page enforce the quota per room instead of only
     # counting a grand total: the counter that matters while you are looking at
@@ -1257,12 +1364,19 @@ section:first-of-type h1.amb {{ margin-top:1rem }}
 .cap {{ display:block; padding:.4rem .5rem .55rem }}
 .cap code {{ font-size:11px; color:var(--dim) }}
 .meta {{ display:block; font-size:11px; color:var(--dim); margin-top:.15rem }}
-.flag, .warn, .why {{ display:inline-block; margin:.28rem .28rem 0 0; padding:.1rem .38rem;
-  border-radius:4px; font-size:10.5px; line-height:1.5 }}
+.flag, .warn, .why, .saw {{ display:inline-block; margin:.28rem .28rem 0 0;
+  padding:.1rem .38rem; border-radius:4px; font-size:10.5px; line-height:1.5 }}
 .flag {{ background:color-mix(in srgb, var(--flag) 16%, transparent); color:var(--flag) }}
 .warn {{ background:var(--warnbg); color:var(--warnfg) }}
 .why {{ background:color-mix(in srgb, var(--pick) 13%, transparent); color:var(--pick);
   font-style:italic }}
+/* What the classification pass saw, in the words it used to decide the room this
+   photo is filed under. Deliberately plain next to the coloured picker's reason:
+   it is evidence for a name, not an opinion about a photograph, and the two being
+   visibly different kinds of statement is what makes them worth comparing. */
+.saw {{ background:color-mix(in srgb, var(--dim) 12%, transparent); color:var(--dim) }}
+.saw b, .why b {{ text-transform:uppercase; letter-spacing:.04em; font-size:9px;
+  opacity:.75; margin-right:.2rem }}
 .tile.chosen {{ border-color:var(--pick) }}
 .count.past, #over.past {{ color:var(--flag); font-weight:700 }}
 .note {{ margin:0 0 1.2rem; padding:.6rem .8rem; border-radius:7px;
@@ -1736,6 +1850,24 @@ def main() -> None:
     else:
         verified, ambiente_note = classify_rooms(job, provisional, vocab,
                                                  args.model, args.workers, prior)
+
+    # Now that every photograph knows what *kind* of room it is, two things can be
+    # asked that could not be asked before, and both have to happen before the
+    # authoritative grouping below reads their answers.
+    #
+    # Which room of that kind — the only pass that can tell one bedroom from a
+    # second bedroom, because it is the only one that looks at the pictures.
+    if not args.no_classify:
+        split_note = split_ambientes(scenes, vocab, args.model, args.workers, prior)
+        if split_note:
+            ambiente_note = (ambiente_note + " " + split_note).strip()
+
+    # And near-duplicates, re-measured inside each real room rather than inside
+    # whatever the photographer's label happened to gather. Free, and on a delivery
+    # where every file carries one label it is the difference between comparing a
+    # bedroom against a bedroom and comparing it against the whole house.
+    cluster_scenes(scenes, by_ambiente=True)
+
     groups = group_rooms(scenes, rules, vocab, prior)   # authoritative
 
     # The second half of the check above, and the one with real evidence behind
@@ -1996,10 +2128,18 @@ def classify_rooms(job: Path, groups: "list[RoomGroup]",
               f"{ambientes.CATALOG_NAME} — nothing to verify")
         return True, ""
 
-    model = model or vision_mod.VISION_MODEL
+    model = model or vision_mod.CLASSIFY_MODEL
+    # An unlabelled room is one call per photograph, not one per room, so the count
+    # that matters to the person waiting — and to the bill — is photographs.
+    unlabelled = [g for g in todo if not g.ambiente_source]
+    shots = sum(len([c[0] for c in g.clusters]) for g in unlabelled)
     print(f"\nambientes   verifying {len(todo)} room(s) · {model} · "
           f"{workers} at a time"
           + (f" · {len(settled)} already settled by hand" if settled else ""))
+    if shots:
+        print(f"            {shots} photo(s) have no usable label and are named one "
+              "by one,\n            one call each — that is the only way none of them "
+              "inherits another's answer")
 
     url_cache: dict = {}
     t0 = time.time()
@@ -2011,7 +2151,7 @@ def classify_rooms(job: Path, groups: "list[RoomGroup]",
     def look(g: RoomGroup):
         leads = [c[0] for c in g.clusters]
         return g, vision_mod.classify(g.room, g.ambiente if g.ambiente_source else None,
-                                      leads, vocab, url_cache, model)
+                                      leads, vocab, url_cache, model, workers)
 
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         for fut in as_completed([pool.submit(look, g) for g in todo]):
@@ -2032,7 +2172,7 @@ def classify_rooms(job: Path, groups: "list[RoomGroup]",
             if c.note:
                 print(f"      {c.note}")
 
-    corrected = moved = split = 0
+    corrected = moved = split = unnamed = 0
     for g in todo:
         c = results.get(id(g))
         if not c or not c.ok:
@@ -2042,11 +2182,25 @@ def classify_rooms(job: Path, groups: "list[RoomGroup]",
         # `filename` means the label was read *and* the pictures agreed with it,
         # which is a stronger claim than `keyword` — that one is only ever a guess
         # nobody checked. The catalogue's legend leans on the difference.
-        _apply_ambiente(g, c.ambiente, "vision" if c.corrigido else "filename",
-                        c.porque if c.corrigido else "")
+        #
+        # Skipped entirely in per-image mode. There is no group answer there to
+        # apply: `c.ambiente` is a tally for the terminal line, and writing it over
+        # the scenes is precisely the substitution that filed photographs of a bed
+        # under COZINHA. Every photograph below gets its own answer or an honest
+        # unknown, and nothing falls back to the room.
+        if not c.per_image:
+            _apply_ambiente(g, c.ambiente, "vision" if c.corrigido else "filename",
+                            c.porque if c.corrigido else "")
         # Per-photo answers are set on the scene, and the second grouping pass is
         # what actually moves them — a photograph of somewhere else becomes its own
         # room rather than a footnote inside the wrong one.
+        #
+        # **Applied by cluster, because only the cluster lead was ever sent.** One
+        # contender per angle goes to the model; the rest of a cluster are frames of
+        # the same view from the same spot, so the lead's answer is theirs by
+        # construction rather than by assumption. That is a different claim from the
+        # one this code used to make, which was that a photograph nobody asked about
+        # belongs to whatever the batch voted for.
         #
         # `vision_mod.fold` and not the `fold` in this module: they are different
         # functions with the same name, and these keys were built with that one.
@@ -2054,16 +2208,30 @@ def classify_rooms(job: Path, groups: "list[RoomGroup]",
         # Unicode for filename matching, which is what these keys are.
         seen_here = set()
         for cluster in g.clusters:
+            lead = cluster[0]
+            answer = note = None
+            for f in lead.frames:
+                key = vision_mod.fold(f.path.name)
+                if hit := c.named.get(key):
+                    answer, note, source = hit[0], hit[1], "vision"
+                    seen_here.add(hit[0])
+                    break
+                if why := c.failed.get(key):
+                    # Checked and unanswerable is not the same as unchecked, and
+                    # `Origem` is where the two are told apart: `none` says no
+                    # answer stands behind this name, so the sheet asks you.
+                    answer, note, source = (ambientes.UNKNOWN,
+                                            f"não foi possível classificar: {why}",
+                                            "none")
+                    break
+            if answer is None:
+                continue                 # confirm mode: no stray, the room's answer stands
             for s in cluster:
-                for f in s.frames:
-                    hit = c.named.get(vision_mod.fold(f.path.name))
-                    if hit:
-                        s.ambiente = s.ambiente_visto = hit[0]
-                        s.ambiente_source = "vision"
-                        s.ambiente_note = hit[1]
-                        seen_here.add(hit[0])
-                        moved += 1
-                        break
+                s.ambiente = s.ambiente_visto = answer
+                s.ambiente_source = source
+                s.ambiente_note = note
+                moved += source == "vision"
+                unnamed += source == "none"
         if c.per_image:
             split += max(0, len(seen_here) - 1)
 
@@ -2087,6 +2255,7 @@ def classify_rooms(job: Path, groups: "list[RoomGroup]",
                 and not results[id(g)].per_image]
     print(f"ambientes   {corrected} of {len(labelled)} label(s) corrected · "
           f"{moved} photo(s) named individually"
+          + (f" · {unnamed} left {ambientes.UNKNOWN}" if unnamed else "")
           + (f" · {split} extra room(s) found in unsorted folders" if split else "")
           + f" · {calls} call(s) · {time.time() - t0:.0f}s"
           + (f" · {len(failed)} room(s) unverified" if failed else ""))
@@ -2097,11 +2266,120 @@ def classify_rooms(job: Path, groups: "list[RoomGroup]",
              if corrected else "Every label agreed with the pictures. ")
     if moved:
         note += (f"{moved} photograph(s) had no usable label and were named one by "
-                 "one. ")
+                 "one, one call each. ")
+    if unnamed:
+        note += (f"<b>{unnamed} could not be named at all</b> and are sitting under "
+                 f"<code>{ambientes.UNKNOWN}</code> — set them yourself below, "
+                 "because an unnamed photo is delivered under that word. ")
     if failed:
         note += ("Could not be checked, so kept the filename's word: "
                  + html.escape(", ".join(failed[:6])) + ". ")
     return True, note.strip()
+
+
+def split_ambientes(scenes: "list[Scene]", vocab: "ambientes.Vocabulary",
+                    model: "str | None", workers: int, prior: dict) -> str:
+    """Work out which photographs of one kind of room are the *same* room.
+
+    Sets `sala_hint` on the scenes; `group_rooms` is what turns that into
+    `QUARTO_02`. Returns a note for the sheet, and is never fatal — an ambiente
+    this cannot split stays as one room, which is where it was already.
+
+    **This is the only pass in the stage that can answer the question at all.**
+    Every other source of a physical room is a token: a numbered folder, a
+    photographer's label, a `Sala` you typed. A flat folder of `IMG_9620.HEIC` has
+    none of them, so two bedrooms arrive as one bedroom and the delivery goes out
+    with six photographs under `QUARTO_01`. A perceptual hash cannot stand in for
+    it either, and not marginally: two views of one room from opposite corners hash
+    further apart than two different rooms furnished from the same shop.
+
+    Only ambientes with something to decide are sent — two or more photographs, and
+    at least one of them not already settled in `ambientes.md`. A delivery you have
+    already split costs nothing to re-run, which is the same bargain
+    `classify_rooms` strikes with `settled` above.
+    """
+    import vision as vision_mod
+
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / "_config" / ".env")
+    import os
+    if not os.environ.get("FAL_KEY"):
+        return ""
+
+    # Grouped by area as well as ambiente: two wings of a property can each hold a
+    # `Piscina`, and those are two pools whatever a model makes of the pictures.
+    by_ambiente: "dict[tuple, list[Scene]]" = defaultdict(list)
+    for s in scenes:
+        if s.ambiente and s.ambiente != ambientes.UNKNOWN:
+            by_ambiente[(s.area or "", s.ambiente)].append(s)
+
+    def settled(s: "Scene") -> bool:
+        """True when `ambientes.md` already answers this photograph's room number."""
+        row = next((prior[k] for k in
+                    (ambientes.fold_name(f.path.name) for f in s.frames)
+                    if k in prior), None)
+        return bool(row) and not row.edited and row.ambiente == s.ambiente
+
+    # Nothing to ask where the photographer's own labels already separate the
+    # rooms, and no right to overrule them: someone who filed into `2_Quarto_1/`
+    # and `3_Quarto_2/` walked the property and knows. Only an ambiente whose
+    # labels say nothing is the model's to divide — which is exactly the delivery
+    # where nothing else can. Same test `group_rooms` uses to decide whether the
+    # label belongs in its key, so the two cannot disagree about who is deciding.
+    divides = labels_distinguish(scenes)
+
+    todo = {}
+    for key, group in by_ambiente.items():
+        if len(group) < 2 or key in divides:
+            continue
+        if all(settled(s) for s in group):
+            continue
+        todo[key] = sorted(group, key=lambda s: s.lead.path.name)
+    if not todo:
+        return ""
+
+    model = model or vision_mod.CLASSIFY_MODEL
+    print(f"\ncômodos     {len(todo)} ambiente(s) with more than one photo · {model}")
+
+    url_cache: dict = {}
+    t0 = time.time()
+    splits: "list" = []
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = [pool.submit(vision_mod.split_rooms, amb, group, url_cache,
+                               vocab.split_prompt, model)
+                   for (_, amb), group in todo.items()]
+        for fut in as_completed(futures):
+            sp = fut.result()
+            splits.append(sp)
+            if not sp.ok:
+                print(f"  !! {sp.ambiente:22s} kept as one room — {sp.error}")
+            elif len(sp.rooms) > 1:
+                print(f"  ->  {sp.ambiente:22s} {len(sp.rooms)} rooms"
+                      + (f"  ({sp.porque})" if sp.porque else ""))
+            else:
+                print(f"  ok  {sp.ambiente:22s} one room")
+            if sp.note and sp.ok and len(sp.rooms) == 1:
+                print(f"      {sp.note}")
+
+    found = 0
+    for sp in splits:
+        if not sp.ok:
+            continue                     # no opinion — the label keeps the room
+        found += len(sp.rooms) - 1
+        for idx, room in enumerate(sp.rooms, 1):
+            for s in room:
+                s.sala_hint = idx
+
+    calls = sum(sp.calls for sp in splits)
+    print(f"cômodos     {found} extra room(s) found · {calls} call(s) · "
+          f"{time.time() - t0:.0f}s")
+    if not found:
+        return ""
+    which = ", ".join(f"{sp.ambiente} ×{len(sp.rooms)}" for sp in splits
+                      if sp.ok and len(sp.rooms) > 1)
+    return (f"Told apart as separate rooms of the same kind: <b>{html.escape(which)}</b>. "
+            "If two of them are really one room, or one is really two, change "
+            "<b>Sala</b> under the photo and re-run — your number always wins.")
 
 
 def _apply_ambiente(g: RoomGroup, slug: str, source: str, note: str = "",
@@ -2174,13 +2452,24 @@ def run_vision(job: Path, groups: "list[RoomGroup]", rules: Rules,
             s.purpose, s.staging = p["purpose"], p["staging"]
         for r in v.rejected:
             r["scene"].rejected_why = r["why"]
+        for r in v.not_room:
+            r["scene"].not_this_room = r["why"] or "não parece ser deste ambiente"
 
     picked = sum(1 for g in groups for c in g.clusters for s in c if s.chosen)
     calls = sum(v.calls for v in verdicts.values())
+    disputed = [s for g in groups for c in g.clusters for s in c if s.not_this_room]
     print(f"vision      {picked} pre-ticked · {calls} call(s) · "
           f"{time.time() - t0:.0f}s"
           + (f" · {len(failed)} room(s) failed" if failed else "")
           + (f" · {unmatched} invented filename(s) dropped" if unmatched else ""))
+    if disputed:
+        # Worth its own line and not a footnote: the two model passes have reached
+        # different conclusions about the same photograph, and only a person can
+        # settle that. Silence here is what let a terrace ship as a kitchen.
+        print(f"            {len(disputed)} photo(s) the picker says are not of the "
+              "room they are filed under:")
+        for s in disputed[:8]:
+            print(f"              {s.lead.path.name} ({s.ambiente}) — {s.not_this_room}")
 
     write_selection(job, groups, rules, verdicts, model)
     print(f"selection   {rel(job / 'selection.md')}")
@@ -2188,6 +2477,10 @@ def run_vision(job: Path, groups: "list[RoomGroup]", rules: Rules,
     note = (f"Pre-ticked by <code>{html.escape(model)}</code>, with its reason on each "
             "tile. It has never seen this property and does not know what the listing "
             "promises — treat it as a first draft.")
+    if disputed:
+        note += (f" <b>{len(disputed)} photo(s) it says are not of the room they are "
+                 "filed under</b> — marked in red below. Fix the room under the photo "
+                 "before approving, because that name is the filename.")
     if failed:
         note += (f" {len(failed)} room(s) could not be judged and are empty: "
                  + html.escape(", ".join(failed)) + ".")

@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
-"""Ask a vision model to choose the best few photographs of one room.
+"""Ask a vision model what a room is, whether two of them are one, and which
+photographs of it are best.
 
-Called by `cull.py` once per room. Standalone, it runs one room so a prompt
+Called by `cull.py`. Standalone, it runs the ranking for one room so a prompt
 change can be judged for a few cents instead of a whole delivery:
 
     ./_config/.venv/bin/python "0 - selection/vision.py" "0 - selection/Cobertura" --room Cozinha
 
-**One call per room, not one per photograph.** Choosing the best three of
-twenty-one kitchen shots is a comparison, and a comparison cannot be made one
-photograph at a time — score them individually and you get twenty-one opinions
-with no way to enforce "at most three". `fal-ai/any-llm/vision` takes
-`image_urls` as an array, so the whole room goes into a single call and the
-comparison happens where it belongs.
+**Three questions, and the unit of a call is different for each**, because what
+has to be in view to answer differs:
+
+- `choose()` — *which of these is best?* **One call per room.** Choosing the best
+  three of twenty-one kitchen shots is a comparison, and a comparison cannot be
+  made one photograph at a time: score them individually and you get twenty-one
+  opinions with no way to enforce "at most three".
+- `split_rooms()` — *which of these are the same physical room?* **One call per
+  ambiente**, every photograph of it in view at once. Compare a photograph against
+  only half the set and it can be filed as a new room because its real room was in
+  the other half.
+- `classify()` — *what room is this?* One call per room when there is a label to
+  confirm, and **one call per photograph when there is not**. With no label there
+  is no set to compare against and nothing to defend, so batching buys nothing and
+  costs everything: the answer array truncated at `MAX_TOKENS` and each missing
+  photograph inherited the batch's majority vote. That is how photographs of a bed
+  were delivered as `COZINHA`.
 
 The model judges what a measurement cannot see: what the room is for, whether it
 looks cared for, whether the set hangs together, and the strategy document's
@@ -29,9 +41,11 @@ only meaningful *relative to the same subject* — a sharp photograph of a plain
 wall scores below a soft one of a bookcase — so it ranks frames within one angle
 and is never quoted as a quality.
 
-The instruction text lives in `../_config/Seletor/RULES.md` between its
-`===== VISION PROMPT` markers, alongside the quota it has to respect. Nothing
-about what makes a good photograph is hard-coded here.
+The ranking instructions live in `../_config/Seletor/RULES.md` between its
+`===== VISION PROMPT` markers, alongside the quota they have to respect. The
+three naming instructions live in `AMBIENTES.md`, one block per question. Nothing
+about what makes a good photograph, or about what makes a room, is hard-coded
+here.
 """
 
 from __future__ import annotations
@@ -41,14 +55,22 @@ import json
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
 
+import ambientes
+
 SELECTION_DIR = Path(__file__).resolve().parent
 ROOT = SELECTION_DIR.parent
+
+# The one name this file needs from the vocabulary, and it must be *the* one: an
+# unknown that does not match `AMBIENTES.md`'s row is not a valid answer anywhere
+# downstream.
+UNKNOWN_SLUG = ambientes.UNKNOWN
 
 VISION_ENDPOINT = "fal-ai/any-llm/vision"
 
@@ -57,10 +79,24 @@ VISION_ENDPOINT = "fal-ai/any-llm/vision"
 # arbitrary; the full list is in the endpoint's OpenAPI schema.
 VISION_MODEL = "google/gemini-2.5-flash-lite"
 
+# Naming a room is a separate question from ranking photographs, and a more
+# expensive one to get wrong: the answer becomes the filename a client receives,
+# where a bad pick is only a photograph nobody would have chosen. Split out so the
+# two can be priced apart — raise this one alone when the room names look careless.
+CLASSIFY_MODEL = VISION_MODEL
+
 # Images per call. A room with fifty angles cannot go in one request — too many
 # tokens, and the model's attention thins out across them — so large rooms run a
 # tournament instead.
 BATCH_MAX_IMAGES = 12
+
+# Telling one bedroom from a second bedroom means holding every bedroom in view at
+# once, so this question cannot be split into heats the way ranking can — a
+# photograph compared only against half the set can be filed as a new room because
+# its real room was in the other half. Above this count the split is skipped and
+# says so, which leaves the rooms merged and correctable by hand; inventing a
+# QUARTO_02 out of a partial view is the worse error.
+SPLIT_MAX_IMAGES = 12
 
 # Sent at this long edge, downscaled from the 1600px proxy. Images dominate the
 # token bill, and a 1024px frame is plenty to see clutter, a rumpled duvet, or a
@@ -71,6 +107,15 @@ VISION_JPEG_QUALITY = 85
 # Low, because this is a judgement against fixed criteria, not a creative task —
 # and because two runs over the same delivery should mostly agree.
 TEMPERATURE = 0.2
+
+# Zero for the two naming questions, which are not judgements at all. "Is there a
+# bed in this picture" and "is this the same bedroom as that one" have answers,
+# and the sampling that gives a ranking pass its useful variety only makes these
+# unstable. Measured on `WC-00284` at 0.2: one run in three split the veranda into
+# two rooms over four photographs of one hammock, and a wrong `VARANDA_02` is a
+# wrong filename. Which run you got decided the delivery.
+CLASSIFY_TEMPERATURE = 0.0
+
 MAX_TOKENS = 2000
 
 # The model is told to answer in JSON, but the endpoint has no structured-output
@@ -89,6 +134,10 @@ class Verdict:
     room: str
     picks: "list[dict]" = field(default_factory=list)     # file, rank, reason, ...
     rejected: "list[dict]" = field(default_factory=list)  # file, why
+    # Photographs the model says are not of this room at all. A different claim
+    # from `rejected`, which is about a photograph being *bad*, and the only place
+    # in the run where the ranking pass can push back on the name it was handed.
+    not_room: "list[dict]" = field(default_factory=list)  # scene, why
     calls: int = 0
     seconds: float = 0.0
     model: str = ""
@@ -304,7 +353,8 @@ def parse_classification(text: str) -> dict:
 
 
 def ask(prompt: str, system_prompt: str, urls: "list[str]",
-        model: str = VISION_MODEL, parse=parse_answer) -> "tuple[dict, str]":
+        model: str = VISION_MODEL, parse=parse_answer,
+        temperature: float = TEMPERATURE) -> "tuple[dict, str]":
     """One call. Returns (parsed, raw). Retries once on an unparseable answer.
 
     `parse` is what decides whether the answer is usable, so the retry — which is
@@ -325,7 +375,7 @@ def ask(prompt: str, system_prompt: str, urls: "list[str]",
                 "system_prompt": system_prompt,
                 "image_urls": urls,
                 "model": model,
-                "temperature": TEMPERATURE,
+                "temperature": temperature,
                 "max_tokens": MAX_TOKENS,
                 "priority": "throughput",
             }, with_logs=False)
@@ -358,11 +408,17 @@ class Classification:
     ambiente: str = ""               # the answer for the group as a whole
     corrigido: bool = False
     porque: str = ""
-    # folded filename -> (slug, why). In per-image mode this is every photograph;
-    # otherwise only the ones that turned out to be of somewhere else.
+    # folded filename -> (slug, why). In per-image mode this is every photograph
+    # that got an answer; otherwise only the ones that turned out to be of
+    # somewhere else.
     named: "dict[str, tuple[str, str]]" = field(default_factory=dict)
+    # folded filename -> what went wrong. Per-image mode only, and deliberately
+    # separate from `named`: a photograph the model *looked at* and could not place
+    # was checked and came back unknown, while one whose call failed was never
+    # checked at all. Both end at NAO_IDENTIFICADO and the catalogue's `Origem`
+    # column is where the difference shows — `vision` against `none`.
+    failed: "dict[str, str]" = field(default_factory=dict)
     per_image: bool = False
-    unnamed: int = 0                 # per-image mode: shown but not named back
     calls: int = 0
     seconds: float = 0.0
     model: str = ""
@@ -374,38 +430,35 @@ class Classification:
         return not self.error
 
 
-def build_classify_prompt(label: "str | None", mapped: "str | None",
-                          scenes: "list", vocab, per_image: bool = False) -> str:
-    """The user half of the classification call. The rules are in AMBIENTES.md."""
-    lines = []
-    if per_image:
-        lines.append(
-            "These photographs are **not** known to be one room. What groups them is "
-            "a folder name" + (f' — "{label}" — ' if label else " ")
-            + "which named no room in the list below, so treat them as unsorted and "
-              "name each one on its own.")
-        lines.append("Answer with the **naming every image** shape: one entry in "
-                     "`ambientes` per image shown.")
-    elif label:
-        lines.append(f'The photographer\'s label for this room: "{label}".')
-        lines.append(f"That label was read as `{mapped}`. Confirm it, or correct "
-                     "it if the photographs show otherwise.")
-        lines.append("Answer with the **confirming one room** shape.")
-    else:
-        lines.append("The photographer gave this room no label — the filenames are "
-                     "the camera's. Name each photograph on its own, with the "
-                     "**naming every image** shape.")
-    lines += ["",
-              "The names you may return, and the only ones:",
-              vocab.list_for_prompt(),
-              "",
-              f"You are shown {len(scenes)} photograph(s), in the order listed "
-              "below." if per_image else
-              f"You are shown {len(scenes)} photograph(s) of what is believed to be "
-              "one room, in the order listed below."]
+def build_confirm_prompt(label: "str | None", mapped: str, scenes: "list",
+                         vocab) -> str:
+    """The user half of a *confirm* call: a labelled room, all of it at once."""
+    lines = [f'The photographer\'s label for this room: "{label}".',
+             f"That label was read as `{mapped}`. Confirm it, or correct it if the "
+             "photographs show otherwise.",
+             "",
+             "The names you may return, and the only ones:",
+             vocab.list_for_prompt(),
+             "",
+             f"You are shown {len(scenes)} photograph(s) of what is believed to be "
+             "one room, in the order listed below."]
     lines += [f"Image {i + 1} — {s.lead.path.name}" for i, s in enumerate(scenes)]
     lines += ["", "Answer with the JSON object only."]
     return "\n".join(lines)
+
+
+def build_name_prompt(scene, vocab) -> str:
+    """The user half of a *name* call: one photograph, no label, no premise."""
+    return "\n".join([
+        "The names you may return, and the only ones:",
+        vocab.list_for_prompt(),
+        "",
+        f"The one photograph you are shown is `{scene.lead.path.name}`. Nothing is "
+        "known about it beyond the picture itself.",
+        "",
+        "List what you can see first, then name the room. Answer with the JSON "
+        "object only.",
+    ])
 
 
 def _valid_slug(claimed: str, vocab) -> "str | None":
@@ -429,21 +482,20 @@ def _valid_slug(claimed: str, vocab) -> "str | None":
 
 
 def classify(label: "str | None", mapped: "str | None", scenes: "list", vocab,
-             cache: dict, model: str = VISION_MODEL) -> Classification:
+             cache: dict, model: str = CLASSIFY_MODEL,
+             workers: int = 4) -> Classification:
     """Name one room, or name each photograph. Never raises — failures are recorded.
 
-    All of the room's cluster leads are shown, in batches, rather than a sample of
-    them. Sampling would be cheaper and would answer the main question just as
-    well, but it cannot find the stray file — the one photograph in the folder that
-    is of somewhere else — and that is half of what this pass is for.
+    **The two cases are different questions and are asked differently**, which is
+    the whole shape of this function. With a label, the room is the unit: all of
+    its photographs go in together, the model confirms or corrects one name, and
+    seeing them side by side is what finds the stray file that is of somewhere
+    else. With no label there is no room to confirm — a group only exists because
+    something put those files together, and when that something is a folder named
+    `3_Condomínio/` or a property reference, it is not evidence of anything.
 
-    **With no label to confirm, the question changes shape.** A group only exists
-    because something put those files together; when that something is a folder
-    named `3_Condomínio/`, it is not evidence of a room, and asking "which room is
-    this?" of a gym, a lobby and a pool deck at once gets one answer for all three.
-    So an unlabelled group is asked to name every photograph instead, and the
-    grouping that follows splits them apart. Measured on a real delivery: 28 files
-    that used to arrive as one imaginary room.
+    So an unlabelled group is asked **one photograph at a time**, and the grouping
+    that follows splits the answers apart.
     """
     per_image = not mapped
     out = Classification(label=label or "", mapped=mapped, model=model,
@@ -452,7 +504,88 @@ def classify(label: "str | None", mapped: "str | None", scenes: "list", vocab,
     if not scenes:
         out.error = "no scenes"
         return out
+    (_name_each if per_image else _confirm_one)(out, label, mapped, scenes, vocab,
+                                                cache, model, workers)
+    out.seconds = time.time() - t0
+    return out
 
+
+def _name_each(out: Classification, label, mapped, scenes: "list", vocab,
+               cache: dict, model: str, workers: int) -> None:
+    """One photograph, one call, one answer. No photograph inherits another's.
+
+    This used to send twelve photographs per call and ask for an array of twelve
+    answers, then fall back to the batch's majority vote for any photograph the
+    model left out. Both halves of that were wrong and they compounded:
+
+    - An array of twelve verbose Portuguese entries runs into `MAX_TOKENS`, so the
+      tail of it is silently truncated. Truncation was the expected case, not the
+      rare one.
+    - The fallback then filed those photographs under whatever the rest of the
+      batch happened to be. Measured on `WC-00284`: three photographs of a bed
+      were delivered as `COZINHA`, because they sat in a five-image tail batch that
+      voted kitchen. Nothing in the output said a guess had been substituted.
+
+    A photograph now gets its own answer or an honest `NAO_IDENTIFICADO`. That
+    costs one call per photograph — cents on this model — and it is the correct
+    price for the field that becomes a client's filename.
+    """
+    def name_one(scene) -> "tuple[str, str | None, str]":
+        key = fold(scene.lead.path.name)
+        try:
+            url = upload_for_vision(scene.lead.proxy, cache)
+            data, _ = ask(build_name_prompt(scene, vocab), vocab.name_prompt,
+                          [url], model=model, parse=parse_classification,
+                          temperature=CLASSIFY_TEMPERATURE)
+        except VisionError as e:
+            return key, None, str(e)
+        slug = _valid_slug(data["ambiente"], vocab)
+        if slug is None:
+            return key, None, (f"model answered `{str(data['ambiente'])[:24]}`, "
+                               "which is not in AMBIENTES.md")
+        # `why` ties the evidence to the name and is what the contact sheet shows;
+        # `vejo` is the bare list of fixtures, and stands in when the model skipped
+        # the sentence. Between them the reviewer can see *why* a photograph was
+        # filed where it was, which is how a wrong answer becomes visible.
+        why = str(data.get("why", "") or "").strip()
+        return key, slug, why or str(data.get("vejo", "") or "").strip()
+
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for key, slug, text in pool.map(name_one, scenes):
+            out.calls += 1
+            if slug is None:
+                out.failed[key] = text
+            else:
+                out.named[key] = (slug, text)
+
+    counts: "dict[str, int]" = {}
+    for slug, _ in out.named.values():
+        counts[slug] = counts.get(slug, 0) + 1
+    # Reported, never applied. This is the group's rough shape for the terminal
+    # line; no photograph is ever filed under it. That substitution is the bug this
+    # function was rewritten to remove, so there is deliberately no code path here
+    # that could reintroduce it.
+    out.ambiente = max(counts, key=lambda s: (counts[s], s), default=UNKNOWN_SLUG)
+    if not out.named:
+        out.error = "no photograph could be named"
+        return
+    found = ", ".join(f"{s}×{n}" for s, n in
+                      sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+    out.note = f"named {len(out.named)} photo(s) one by one: {found}"
+    if out.failed:
+        out.note += (f"; {len(out.failed)} could not be named and are "
+                     f"{UNKNOWN_SLUG} for you to settle")
+
+
+def _confirm_one(out: Classification, label, mapped: str, scenes: "list", vocab,
+                 cache: dict, model: str, workers: int) -> None:
+    """A labelled room, judged as a room. All of it at once, in batches if large.
+
+    Every one of the room's cluster leads is shown rather than a sample. Sampling
+    would be cheaper and would answer the main question just as well, but it cannot
+    find the stray file — the one photograph in the folder that is of somewhere
+    else — and that is half of what this pass is for.
+    """
     batches = [scenes[i:i + BATCH_MAX_IMAGES]
                for i in range(0, len(scenes), BATCH_MAX_IMAGES)]
     votes: "list[str]" = []
@@ -461,10 +594,10 @@ def classify(label: "str | None", mapped: "str | None", scenes: "list", vocab,
         candidates = {fold(s.lead.path.name): s for s in batch}
         try:
             urls = [upload_for_vision(s.lead.proxy, cache) for s in batch]
-            data, _ = ask(build_classify_prompt(label, mapped, batch, vocab,
-                                                per_image),
-                          vocab.prompt, urls, model=model,
-                          parse=parse_classification)
+            data, _ = ask(build_confirm_prompt(label, mapped, batch, vocab),
+                          vocab.confirm_prompt, urls, model=model,
+                          parse=parse_classification,
+                          temperature=CLASSIFY_TEMPERATURE)
         except VisionError as e:
             out.error = str(e)
             break
@@ -480,10 +613,7 @@ def classify(label: "str | None", mapped: "str | None", scenes: "list", vocab,
         # that argued for the answer that won rather than whichever batch was last.
         reasons.setdefault(slug, str(data.get("porque", "") or "").strip())
 
-        # Per-image mode: every entry is authoritative for its own photograph, and
-        # a set that disagrees with itself is the expected answer rather than a
-        # warning sign. `named` below is what makes the group split.
-        listed = data.get("ambientes") if per_image else data.get("estranhos")
+        listed = data.get("estranhos")
         listed = listed if isinstance(listed, list) else []
         keep: "dict[str, tuple[str, str]]" = {}
         for item in listed:
@@ -493,32 +623,29 @@ def classify(label: "str | None", mapped: "str | None", scenes: "list", vocab,
             item_slug = _valid_slug(str(item.get("ambiente", "")), vocab)
             if not key or not item_slug:
                 continue
-            # In per-image mode every answer counts. Otherwise only the ones that
-            # disagree with the room are news — a model that helpfully lists all
-            # twelve images as the room they are in has said nothing.
-            if per_image or item_slug != slug:
+            # Only the ones that disagree with the room are news — a model that
+            # helpfully lists all twelve images as the room they are in has said
+            # nothing.
+            if item_slug != slug:
                 keep[key] = (item_slug, str(item.get("why", "")).strip())
 
         # A stray is one image out of step with its neighbours. When most of a
-        # *labelled* batch disagrees, the model has not found strays — it has
-        # disagreed with the premise, and its own `ambiente` already said so.
-        # Acting on it would shatter one room into several of one photograph.
-        # Counted after filtering, because before it the number is inflated by
-        # entries that turn out to agree with the room after all.
-        if not per_image and len(keep) > len(batch) / 2:
+        # batch disagrees, the model has not found strays — it has disagreed with
+        # the premise, and its own `ambiente` already said so. Acting on it would
+        # shatter one room into several of one photograph. Counted after filtering,
+        # because before it the number is inflated by entries that turn out to
+        # agree with the room after all.
+        if len(keep) > len(batch) / 2:
             out.note = (f"{len(keep)} of {len(batch)} images disagreed with the "
                         "label — too many to be strays, so they were left alone")
             continue
         out.named.update(keep)
-        if per_image:
-            out.unnamed += sum(1 for k in candidates if k not in out.named)
 
-    out.seconds = time.time() - t0
     if not votes:
         out.ambiente = mapped or ""
         if not out.error:
             out.error = out.note or "no usable answer"
-        return out
+        return
 
     # The room's identity is the majority answer; the first batch breaks a tie,
     # because it is the one with no history behind it.
@@ -526,19 +653,130 @@ def classify(label: "str | None", mapped: "str | None", scenes: "list", vocab,
     out.ambiente = ranked[0]
     out.corrigido = out.ambiente != mapped
     out.porque = reasons.get(out.ambiente, "") if out.corrigido else ""
-
-    if per_image:
-        found = sorted({slug for slug, _ in out.named.values()})
-        out.note = f"named {len(out.named)} photo(s) as {', '.join(found)}"
-        if out.unnamed:
-            out.note += (f"; {out.unnamed} came back unnamed and fell to "
-                         f"{out.ambiente}")
-    elif len(ranked) > 1:
-        # Only worth saying when the premise was that this is one room: then a
-        # disagreement between batches is evidence the premise is wrong.
+    if len(ranked) > 1:
+        # The premise was that this is one room, so a disagreement between batches
+        # is evidence the premise is wrong.
         out.note = ("batches disagreed (" +
                     ", ".join(f"{s}×{votes.count(s)}" for s in ranked) +
                     ") — the folder may hold more than one room")
+
+
+# ------------------------------------------------------- one room or two rooms
+# A third question, and the only one that can answer it is the one looking at the
+# pixels. Everything upstream derives a *physical* room from filename and folder
+# tokens, so a photographer who hands over a flat folder of camera filenames
+# delivers two bedrooms as one room — there is no token to tell them apart, and a
+# perceptual hash cannot help either: two views of one room hash further apart than
+# two similarly furnished rooms do.
+
+@dataclass
+class Split:
+    """How the photographs of one ambiente divide into physical rooms."""
+    ambiente: str = ""
+    rooms: "list[list]" = field(default_factory=list)   # scenes, in room order
+    porque: str = ""
+    calls: int = 0
+    seconds: float = 0.0
+    model: str = ""
+    note: str = ""
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.error
+
+
+def build_split_prompt(ambiente: str, scenes: "list") -> str:
+    lines = [f"Every photograph below has been identified as `{ambiente}`.",
+             f"You are shown {len(scenes)} of them, in the order listed here.",
+             "",
+             "Say which are the same physical room. Answer with the JSON object "
+             "only."]
+    lines[3:3] = [f"Image {i + 1} — {s.lead.path.name}"
+                  for i, s in enumerate(scenes)]
+    return "\n".join(lines)
+
+
+def parse_split(text: str) -> dict:
+    """The split answer: a JSON object carrying a `comodos` list of lists."""
+    data = extract_json(text)
+    rooms = data.get("comodos")
+    if not isinstance(rooms, list) or not rooms:
+        raise VisionError(f"answer has no 'comodos' list: {list(data)[:6]}")
+    if not all(isinstance(r, list) for r in rooms):
+        raise VisionError("'comodos' is not a list of lists")
+    return data
+
+
+def split_rooms(ambiente: str, scenes: "list", cache: dict, split_prompt: str,
+                model: str = CLASSIFY_MODEL) -> Split:
+    """Divide one ambiente's photographs into physical rooms. Never raises.
+
+    One call, every photograph in it, because this comparison cannot be run in
+    heats — see `SPLIT_MAX_IMAGES`.
+
+    **Every failure mode here resolves to "one room".** A missing file, a repeated
+    file, an unparseable answer, too many photographs to show at once: all of them
+    leave the ambiente merged, which is the state a person fixes with one click on
+    the contact sheet. The opposite error invents a `QUARTO_02` that does not
+    exist and writes it into a filename that reaches a client, and no click undoes
+    that once the job has moved on.
+    """
+    out = Split(ambiente=ambiente, model=model, rooms=[list(scenes)])
+    t0 = time.time()
+    if len(scenes) < 2:
+        return out
+    if len(scenes) > SPLIT_MAX_IMAGES:
+        out.note = (f"{len(scenes)} photos is more than the {SPLIT_MAX_IMAGES} that "
+                    "can be compared in one look — left as one room")
+        return out
+
+    by_name = {fold(s.lead.path.name): s for s in scenes}
+    try:
+        urls = [upload_for_vision(s.lead.proxy, cache) for s in scenes]
+        data, _ = ask(build_split_prompt(ambiente, scenes), split_prompt, urls,
+                      model=model, parse=parse_split,
+                      temperature=CLASSIFY_TEMPERATURE)
+    except VisionError as e:
+        out.error = str(e)
+        out.seconds = time.time() - t0
+        return out
+    out.calls = 1
+
+    rooms: "list[list]" = []
+    claimed: set = set()
+    for group in data["comodos"]:
+        room = []
+        for claim in group:
+            key = match_file(str(claim), by_name)
+            if key is None or key in claimed:
+                continue                 # invented or repeated — see the docstring
+            claimed.add(key)
+            room.append(by_name[key])
+        if room:
+            rooms.append(room)
+
+    missing = [s for s in scenes if fold(s.lead.path.name) not in claimed]
+    if not rooms or missing:
+        # A partial answer is not a split. Filing the photographs it did name into
+        # rooms and the ones it forgot into a leftover room would manufacture a
+        # room out of the model's inattention, which is exactly the error this
+        # function refuses to make.
+        out.error = (f"{len(missing)} of {len(scenes)} photo(s) missing from the "
+                     "answer" if missing else "no usable groups in the answer")
+        out.rooms = [list(scenes)]
+        out.seconds = time.time() - t0
+        return out
+
+    # Largest first: the room the property leads with is the one it has most
+    # photographs of, and it should be the `_01`.
+    rooms.sort(key=lambda r: (-len(r), min(s.lead.path.name for s in r)))
+    out.rooms = rooms
+    out.porque = str(data.get("porque", "") or "").strip() if len(rooms) > 1 else ""
+    if len(rooms) > 1:
+        out.note = (f"{len(rooms)} rooms: "
+                    + " · ".join(f"{len(r)} photo(s)" for r in out.rooms))
+    out.seconds = time.time() - t0
     return out
 
 
@@ -604,14 +842,22 @@ def choose(room: str, scenes: "list", slots: int, rules,
         v.rejected = [r for r in v.rejected if id(r["scene"]) not in chosen_scenes]
 
         # And a frame can be dismissed in more than one round. Keep the first
-        # comment for each, so the list is one line per photograph.
-        seen: set = set()
-        deduped = []
-        for r in v.rejected:
-            if id(r["scene"]) not in seen:
-                seen.add(id(r["scene"]))
-                deduped.append(r)
-        v.rejected = deduped
+        # comment for each, so each list is one line per photograph.
+        def once(entries: "list[dict]") -> "list[dict]":
+            seen: set = set()
+            out = []
+            for e in entries:
+                if id(e["scene"]) not in seen:
+                    seen.add(id(e["scene"]))
+                    out.append(e)
+            return out
+
+        v.rejected = once(v.rejected)
+        # Not filtered against the picks the way `rejected` is: a photograph the
+        # model both picked and called foreign to the room is the most useful thing
+        # this list can report, and dropping it would hide the contradiction that
+        # makes a misclassification visible.
+        v.not_room = once(v.not_room)
     except VisionError as e:
         v.error = str(e)
     v.seconds = time.time() - t0
@@ -651,6 +897,20 @@ def _one_call(room: str, scenes: "list", slots: int, rules,
         key = match_file(str(entry.get("file", "")), by_name)
         if key is not None:
             v.rejected.append({"scene": by_name[key],
+                               "why": str(entry.get("why", "")).strip()})
+
+    # The ranking pass is handed the room name as a premise — `Room: "COZINHA_01"`
+    # — and until this list existed it had no way to say the premise was wrong. It
+    # simply wrote a kitchen-flavoured reason for whatever it was shown, so a
+    # misclassified photograph arrived on the contact sheet with a confident
+    # caption agreeing with the mistake. Measured on `WC-00284`: a terrace filed
+    # under COZINHA was praised for "destacando a geladeira".
+    for entry in data.get("nao_pertence", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        key = match_file(str(entry.get("file", "")), by_name)
+        if key is not None:
+            v.not_room.append({"scene": by_name[key],
                                "why": str(entry.get("why", "")).strip()})
     return chosen[:slots], 1
 
@@ -736,6 +996,10 @@ def main() -> None:
     if v.rejected:
         print(f"\nrejected outright:")
         for r in v.rejected:
+            print(f"  {r['scene'].lead.path.name} — {r['why']}")
+    if v.not_room:
+        print(f"\nsays these are not {g.room} at all:")
+        for r in v.not_room:
             print(f"  {r['scene'].lead.path.name} — {r['why']}")
 
 
