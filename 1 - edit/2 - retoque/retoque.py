@@ -31,6 +31,12 @@ are discarded when you approve the job.
 **The log is appended to, never rewritten.** Phase 1's header — and the source URL
 in it — has to survive every retouch, and the file is the honest history of what was
 asked of this photograph and when.
+
+**And it is read back twice.** `recorded_source_url()` takes the original's CDN URL
+out of phase 1's block; `history()` takes every retouch's sentence out of the blocks
+below it, so `review-edit.html` can show you what you asked next to what came back.
+That makes the block a format with two readers, not just a record: change a row
+label here and change it in `history()` in the same commit.
 """
 
 from __future__ import annotations
@@ -41,12 +47,14 @@ import json
 import re
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent / "_config"))
 import fal  # noqa: E402
+import ledger  # noqa: E402  — for cell(): a `|` in a sentence would end the row
 import paths  # noqa: E402
 import stage  # noqa: E402
 
@@ -67,6 +75,77 @@ SOURCE_URL_RE = re.compile(r"^\|\s*Uploaded source\s*\|\s*(\S+)\s*\|", re.M)
 
 # Counts how many retouches a log already records, so the next block is numbered.
 ROUND_RE = re.compile(r"^## Retoque (\d+) ", re.M)
+
+# The heading of one retouch block, and the rows inside it. `history()` reads
+# both back — which is what turns the block below from a record into a format
+# with a second reader. Deliberately loose about the dash and the spacing: these
+# files are hand-editable and a page with one gap beats a page that will not draw.
+BLOCK_RE = re.compile(r"^## Retoque (\d+)\b[ \t]*[—–-]?[ \t]*(.*)$", re.M)
+ROW_RE = re.compile(r"^\|([^|]+)\|(.*)\|[ \t]*$", re.M)
+
+
+@dataclass
+class Round:
+    """One retouch, as its own log recorded it."""
+    n: int
+    when: str                 # ISO stamp from the heading, or ""
+    instruction: str          # the sentence the human wrote — the whole prompt
+    previous: str = ""        # "SALA_01_0001_edit_r1.jpg": the edit this replaced
+    result: str = ""          # the file it wrote, normally "<stem>_edit.jpg"
+    model: str = ""
+
+
+def _bare(cell: str) -> str:
+    """A table cell as text: backticks off, an em-dash placeholder as empty."""
+    text = cell.strip().strip("`").strip()
+    return "" if text in {"—", "-", ""} else text
+
+
+def history(log: "Path") -> "list[Round]":
+    """Every retouch this photograph has had, oldest first, out of its own log.
+
+    `[]` when the log has no retouch block, is missing, or is unreadable. This is
+    drawn on `review-edit.html` next to the photograph so you can check what you
+    asked against what came back — a page that refuses to render because one log
+    was hand-edited would be worse than a page with a hole in it, so nothing in
+    here raises.
+
+    The second reader of `<stem>_log.md`, after `recorded_source_url()`. See
+    `_dependencies.md`.
+    """
+    try:
+        if not log.exists():
+            return []
+        raw = log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+
+    heads = list(BLOCK_RE.finditer(raw))
+    out: "list[Round]" = []
+    for i, head in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(raw)
+        body = raw[head.end():end]
+        # Everything after the "### Prompt as sent" fence is the prompt verbatim,
+        # which may itself contain pipes and headings. Stop at the first one.
+        body = body.split("\n### ", 1)[0]
+
+        got = {}
+        for row in ROW_RE.finditer(body):
+            label = row.group(1).strip().lower()
+            # Rejoin: a `|` typed inside a sentence used to be written raw, and
+            # splitting on every pipe would truncate the instruction at it.
+            got.setdefault(label, row.group(2).strip())
+
+        out.append(Round(
+            n=int(head.group(1)),
+            when=head.group(2).strip(),
+            instruction=_bare(got.get("instrução humana", "")),
+            previous=_bare(got.get("edit anterior", "")),
+            result=_bare(got.get("resultado", "").split("·")[0]),
+            model=_bare(got.get("model", "")),
+        ))
+    out.sort(key=lambda r: r.n)
+    return out
 
 
 def load_frame() -> "tuple[str, str]":
@@ -226,7 +305,11 @@ def run(source: Path, edit: Path, instruction: str,
         "", f"## Retoque {n} — "
             f"{datetime.now(timezone.utc).isoformat(timespec='seconds')}", "",
         "| | |", "|---|---|",
-        f"| Instrução humana | {instruction} |",
+        # `cell()` for the same reason gate.md uses it: a `|` in the sentence
+        # ends the row early. It was harmless while nothing read this back;
+        # `history()` reads it back, so the sentence on the page would be the
+        # sentence up to the first pipe. The prompt fence below stays verbatim.
+        f"| Instrução humana | {ledger.cell(instruction)} |",
         f"| Imagem editada | `{edit.name}` · {edit_w}×{edit_h} "
         f"· {len(upload_bytes) / 1e6:.2f} MB |",
         f"| Original de referência | {original_url} · {how} |",

@@ -54,15 +54,22 @@ it makes getting one wrong visible too, which is why they are checked.
 # 2. proxies, measurements, room names, quota, contact sheet
 ./_config/.venv/bin/python "0 - selection/cull.py" "0 - selection/Cobertura" --vision
 
+#    cull.py then opens review-selection.html in a browser and waits there
+#    until Ctrl-C. Steps 2b, 3 and 4 below are buttons on that page — each
+#    confirms the exact command first, then runs it with the output on screen.
+
 # 2b. a room is wrong, or one room is really two? fix it on the sheet itself —
-#     change the room under the photograph, press "Copy ambientes.md", paste it
-#     over that file, and re-run. Free: the naming pass is already settled.
+#     change the room under the photograph, then 'Salvar e re-cortar'. Free: the
+#     naming pass is already settled. Without a server: "Copy ambientes.md",
+#     paste it over that file, and run
 ./_config/.venv/bin/python "0 - selection/cull.py" "0 - selection/Cobertura" --vision --no-classify
 
-# 3. open review-selection.html, tick, press "Copiar picks", paste into picks.txt
+# 3. tick your picks. 'Salvar picks.txt' writes them; without a server, press
+#    "Copiar picks" and paste into picks.txt yourself.
 
 # 4. mint the job: develop the picks into 1 - edit/Job_NNNN/, and the rest
-#    into developed/ for the archive to collect later
+#    into developed/ for the archive to collect later. On the page that is
+#    'Revelar o trabalho', which also ends the review session.
 ./_config/.venv/bin/python "0 - selection/develop.py" "0 - selection/Cobertura"
 
 # 5. the API stage, then the mark, each with its own gate
@@ -364,8 +371,13 @@ photographer's own walkthrough order. Each room's counter turns red past its
 share. HTML rather than markdown because the work is comparing and toggling, not
 reading.
 
-It cannot write into the folder — a browser page can't — so "Copiar picks" puts
-the list on the clipboard and you paste it into `picks.txt`.
+Opened from the disk it cannot write into the folder — a browser page can't — so
+"Copiar picks" puts the list on the clipboard and you paste it into `picks.txt`.
+Opened from the local server `cull.py` starts (`_config/serve.py`), 'Salvar
+picks.txt' writes that same text for you, and 'Revelar o trabalho' writes it and
+runs `develop.py`. **The page composes nothing either way**: both routes call
+`picksText()`, so a saved file and a pasted one are the same bytes. Both sets of
+buttons are always there; under `file://` only the clipboard ones appear.
 
 **It is also where a room gets corrected**, and that is not a convenience. The
 line under each photograph is the room it will be delivered as, and it is the
@@ -379,7 +391,9 @@ number outranks the model's on that row for good — the pass is not asked about
 that ambiente again.
 
 The second copy button hands back the whole of `ambientes.md` with the changed
-cells rewritten, to paste over the file. Rewritten rather than composed: the
+cells rewritten, to paste over the file — or 'Salvar e re-cortar' writes exactly
+that text and re-runs the free pass for you, which is steps two and three of the
+paragraph below in one click. Rewritten rather than composed: the
 markdown format lives in `ambientes.py` and a copy of it in the page's JavaScript
 would go stale the first time a column moved. `Visto` is deliberately left as it
 was — the page is not a check, and the gap between the two columns is what marks

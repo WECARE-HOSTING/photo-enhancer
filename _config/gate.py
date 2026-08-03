@@ -22,10 +22,16 @@ be written `{{ ... }}` throughout for that reason alone.
 
 ## The wire format
 
-A browser page cannot write into the folder it sits in, so every decision comes
-back through the clipboard and one file the human pastes into: `gate.txt`, beside
-the page. Stage 0 keeps `picks.txt` — a positive list of 63 out of 307 is not the
-same statement as "these 3 of 63 go back" — but both are read by `parse()`.
+Every decision comes back as one file beside the page: `gate.txt`. Stage 0 keeps
+`picks.txt` — a positive list of 63 out of 307 is not the same statement as
+"these 3 of 63 go back" — but both are read by `parse()`.
+
+A page opened from the disk cannot write that file, so it puts the text on your
+clipboard and you paste it. A page opened from `_config/serve.py` sends the same
+text to the server, which writes it for you and can run the next command. Both
+routes exist on every page and produce the same bytes: the producing function is
+the same one either way, and `SERVE_JS` calls it rather than composing anything
+of its own. See "the server, if any", below.
 
     SALA_01_0002        # sofá saiu com textura plástica, refazer
     +COZINHA_01_0001    # bancada clareou mais do que eu queria, mas passa
@@ -198,6 +204,56 @@ def fold(job_dir: Path, stage: str, round_n: int, marks: "list[Mark]",
     with path.open("a", encoding="utf-8") as fh:
         fh.write("\n".join(out) + "\n")
     return path
+
+
+@dataclass
+class Pass:
+    """One round already recorded in `gate.md`, read back out of it."""
+    stage: str
+    round_n: int
+    when: str
+    rows: "dict[str, tuple[bool, str]]"       # key -> (back, comment)
+
+
+ROUND_HEAD_RE = re.compile(r"^## (.+?) · rodada (\d+) · (\S+)\s*$", re.M)
+DECISION_RE = re.compile(r"^\| `([^`]+)` \| (volta|ok) \| (.*?) \|\s*$", re.M)
+
+
+def passes(job_dir: Path, stage: str = "") -> "list[Pass]":
+    """Every gate round this job has been through, oldest first.
+
+    The complement to `<name>_log.md` on `review-edit.html`: a photograph that
+    was kept with a note, or one whose retouch *failed*, has a row here and no
+    retouch block there. "This is what you asked, and nothing came back" is
+    exactly what the page has to be able to say.
+
+    Forgiving by design — `fold()` writes this file telling you to edit it freely
+    ("é um registro, não uma trava"), so a hand-edited round costs its own rows
+    and nothing else. Never raises.
+    """
+    path = Path(job_dir) / RECORD
+    try:
+        if not path.exists():
+            return []
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+
+    heads = list(ROUND_HEAD_RE.finditer(raw))
+    out: "list[Pass]" = []
+    for i, head in enumerate(heads):
+        if stage and head.group(1).strip() != stage:
+            continue
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(raw)
+        rows = {}
+        for row in DECISION_RE.finditer(raw[head.start():end]):
+            note = row.group(3).strip()
+            rows.setdefault(row.group(1), (row.group(2) == "volta",
+                                           "" if note == "—" else note))
+        out.append(Pass(stage=head.group(1).strip(), round_n=int(head.group(2)),
+                        when=head.group(3), rows=rows))
+    out.sort(key=lambda p: p.round_n)
+    return out
 
 
 def rounds_so_far(job_dir: Path, stage: str) -> int:
@@ -421,6 +477,285 @@ PREFILL.forEach(m => {
   }
 });
 paint();
+"""
+
+
+# --------------------------------------------------------- the server, if any
+#
+# `_config/serve.py` is the other half of this. When the page is opened from it
+# rather than from the disk, these buttons appear beside the clipboard ones and
+# do the pasting and the typing for you. Under `file://` they never appear, and
+# nothing on this page changes at all — the first line of `srvProbe()` is the
+# entire fallback, and the clipboard route stays exactly as it was.
+
+SERVE_BAR = '<span id="srvbar"></span>'     # where the buttons get built
+
+# Every colour here has a fallback, because `cull.py`'s page does not use
+# BASE_CSS — it has a palette of its own, older and named differently. Rather
+# than fold the two (a refactor with its own blast radius, for no gain here),
+# each `var()` names both spellings and this stylesheet drops into either page.
+SERVE_CSS = """
+#srvbar { display:inline-flex; gap:.5rem; flex-wrap:wrap }
+#srvbar:not(:empty)::before { content:''; width:1px; align-self:stretch;
+  background:var(--line); margin-right:.1rem }
+dialog#srvask { border:1px solid var(--line); border-radius:11px; padding:0;
+  max-width:min(46rem, 92vw); background:var(--bg); color:var(--fg) }
+dialog#srvask::backdrop { background:#0009; backdrop-filter:blur(3px) }
+#srvask .in { padding:1.1rem 1.2rem }
+#srvask h3 { margin:0 0 .5rem; font-size:1.05rem }
+#srvask p { margin:.4rem 0; font-size:13px }
+#srvask .cmd { display:block; margin:.7rem 0; padding:.5rem .6rem; font-size:12px;
+  background:var(--note, #8881); border:1px solid var(--line); border-radius:6px;
+  overflow-x:auto; white-space:pre }
+#srvask .danger { color:var(--warnfg); background:var(--warnbg); padding:.5rem .6rem;
+  border-radius:6px }
+#srvbar button.go, #srvask button.go { color:#fff; font-weight:600;
+  background:var(--ok, var(--pick)); border-color:var(--ok, var(--pick)) }
+#srvbar button.bad, #srvask button.bad { color:#fff; font-weight:600;
+  background:var(--rej, var(--flag)); border-color:var(--rej, var(--flag)) }
+#srvbar button:disabled, #srvask button:disabled { opacity:.4; cursor:not-allowed }
+#srvask ol { margin:.5rem 0; padding-left:1.3rem; font-size:12.5px; max-height:32vh;
+  overflow-y:auto }
+#srvask li { margin:.2rem 0 }
+#srvask li q { color:var(--dim) }
+#srvask .row { display:flex; gap:.6rem; justify-content:flex-end;
+  padding:.8rem 1.2rem; border-top:1px solid var(--line) }
+#srvout { position:fixed; right:1rem; bottom:4.6rem; z-index:12; width:min(46rem, 92vw);
+  max-height:52vh; display:flex; flex-direction:column; border-radius:10px;
+  border:1px solid var(--line); background:var(--bg); overflow:hidden;
+  box-shadow:0 10px 40px #0004 }
+#srvout header { display:flex; gap:.6rem; align-items:center; padding:.5rem .7rem;
+  border-bottom:1px solid var(--line); font-size:12.5px }
+#srvout header b { font-weight:600 }
+#srvout header .sp { margin-left:auto }
+#srvout pre { margin:0; padding:.6rem .7rem; overflow:auto; font-size:11.5px;
+  line-height:1.45; white-space:pre-wrap; word-break:break-word;
+  font-family:ui-monospace, SFMono-Regular, Menlo, monospace }
+#srvout.bad { border-color:var(--rej, var(--flag)) }
+"""
+
+# The page supplies GATE_TEXT: {filename it writes -> function returning its
+# bytes}. Those functions are the ones the clipboard buttons already call, so
+# what gets written is what would have been pasted, to the byte.
+SERVE_JS = """
+const SRV = { on:false, gen:0, tok:'', acts:{}, run:null, busy:false };
+
+// BASE_JS's unsaved-work guard. The selection page does not use BASE_JS and has
+// no such variable, so this is a check and not an assignment to a global that
+// would only exist on one of the two pages.
+function srvUndirty() { if (typeof dirty !== 'undefined') dirty = false; }
+
+function srvHead(extra) {
+  const h = { 'Content-Type':'application/json', 'X-Gate-Token':SRV.tok };
+  if (extra !== false) h['X-Gate-Gen'] = String(SRV.gen);
+  return h;
+}
+
+async function srvProbe() {
+  // The whole file:// fallback. No fetch, no console error, no buttons — the
+  // page behaves exactly as it did before this module existed.
+  if (!location.protocol.startsWith('http')) return;
+  SRV.tok = new URLSearchParams(location.search).get('t') || '';
+  let s;
+  try {
+    const r = await fetch('/_gate/state');
+    if (!r.ok) return;
+    s = await r.json();
+  } catch (e) { return; }
+  SRV.on = true;
+  SRV.gen = s.gen;
+  s.actions.forEach(a => SRV.acts[a.name] = a);
+  srvBuild(s.actions);
+  if (s.running) srvOpen(s.running.action, s.running.id, 0);
+}
+
+function srvBuild(actions) {
+  const bar = document.getElementById('srvbar');
+  if (!bar) return;
+  actions.forEach(a => {
+    const b = document.createElement('button');
+    b.textContent = a.label;
+    if (a.tone) b.className = a.tone;
+    b.dataset.act = a.name;
+    if (a.needsClean) b.dataset.clean = '1';
+    b.title = a.note || a.cmd || '';
+    b.onclick = () => srvAsk(a.name);
+    bar.appendChild(b);
+  });
+  srvPaint();
+}
+
+// The same rule the clipboard Aprovar button has always had, applied to the
+// server's copy of it: a job you have just ticked photographs in cannot be
+// approved, because the archive step would throw that rework away.
+function srvPaint() {
+  const bar = document.getElementById('srvbar');
+  if (!bar) return;
+  const ticked = (typeof boxes === 'function')
+    ? boxes().filter(b => b.checked).length : 0;
+  bar.querySelectorAll('button[data-clean]').forEach(b => {
+    b.disabled = ticked > 0 || SRV.busy;
+    b.title = ticked ? 'Limpe as marcações ou mande-as primeiro'
+                     : ((SRV.acts[b.dataset.act] || {}).note || '');
+  });
+}
+document.addEventListener('change', e => {
+  if (e.target.matches && e.target.matches('input[data-key]')) srvPaint();
+});
+
+function textFor(name) {
+  const a = SRV.acts[name];
+  if (!a || !a.writes) return null;
+  const make = (typeof GATE_TEXT === 'object') && GATE_TEXT[a.writes];
+  return make ? make() : null;
+}
+
+// A page may define srvSummary(name) to show exactly what it is about to send.
+// On the edit page that is every photograph going back with its sentence — the
+// last moment before a paid run to notice you wrote it about the wrong photo.
+function srvDetail(name) {
+  return (typeof srvSummary === 'function') ? (srvSummary(name) || '') : '';
+}
+
+function srvAsk(name) {
+  const a = SRV.acts[name];
+  if (!a) return;
+  let dlg = document.getElementById('srvask');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'srvask';
+    document.body.appendChild(dlg);
+  }
+  const text = textFor(name);
+  const lines = text === null ? 0 : text.split('\\n').filter(l =>
+    l.trim() && !l.trim().startsWith('#')).length;
+  const esc = s => String(s).replace(/[&<>]/g,
+    c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
+
+  const bits = [];
+  if (a.writes) bits.push('<p>Grava <code>' + esc(a.writes) + '</code> — ' +
+    lines + ' linha(s), o mesmo texto do botão de copiar.</p>');
+  if (a.cmd) bits.push('<p>E roda:</p><code class="cmd">' + esc(a.cmd) + '</code>');
+  else bits.push('<p>Não roda nada — só grava o arquivo.</p>');
+  const detail = srvDetail(name);
+  if (detail) bits.push(detail);
+  if (a.danger) bits.push('<p class="danger">' + esc(a.danger) + '</p>');
+  if (a.outcome === 'ends_session')
+    bits.push('<p class="danger">Isto encerra a revisão: o trabalho sai desta ' +
+      'pasta e esta página para de responder.</p>');
+
+  dlg.innerHTML = '<form method="dialog"><div class="in"><h3>' + esc(a.label) +
+    '</h3>' + bits.join('') + '</div><div class="row">' +
+    '<button value="no">Cancelar</button>' +
+    '<button value="yes" class="' + (a.tone || 'go') + '">Confirmar</button>' +
+    '</div></form>';
+  dlg.onclose = () => { if (dlg.returnValue === 'yes') srvGo(name); };
+  dlg.showModal();
+}
+
+async function srvGo(name) {
+  const a = SRV.acts[name];
+  if (SRV.busy) return;
+  SRV.busy = true;
+  const text = textFor(name);
+  const body = { action: name };
+  if (text !== null) body.text = text;
+  const where = a.cmd ? '/_gate/run' : '/_gate/save';
+  let out;
+  try {
+    const r = await fetch(where, { method:'POST', headers:srvHead(),
+                                   body:JSON.stringify(body) });
+    out = await r.json();
+    if (!r.ok) {
+      SRV.busy = false;
+      return srvOpen(name, null, null, out.error || ('erro ' + r.status));
+    }
+  } catch (e) {
+    SRV.busy = false;
+    return srvOpen(name, null, null, 'o servidor não respondeu — ele ainda ' +
+      'está rodando no terminal?');
+  }
+  srvUndirty();
+  if (!a.cmd) {
+    SRV.busy = false;
+    document.getElementById('hint').textContent =
+      'Gravado em ' + a.writes + ' ✓';
+    return;
+  }
+  srvOpen(name, out.run, 0);
+}
+
+function srvPanel() {
+  let el = document.getElementById('srvout');
+  if (el) return el;
+  el = document.createElement('section');
+  el.id = 'srvout';
+  el.innerHTML = '<header><b class="what"></b><span class="st"></span>' +
+    '<span class="sp"></span><button class="kill">Cancelar a rodada</button>' +
+    '<button class="hide">Fechar</button></header><pre></pre>';
+  document.body.appendChild(el);
+  el.querySelector('.hide').onclick = () => el.remove();
+  el.querySelector('.kill').onclick = () => srvCancel();
+  return el;
+}
+
+function srvOpen(name, runId, from, error) {
+  const el = srvPanel();
+  el.classList.toggle('bad', !!error);
+  el.querySelector('.what').textContent = (SRV.acts[name] || {}).label || name;
+  el.querySelector('.kill').hidden = !runId;
+  const pre = el.querySelector('pre');
+  if (error) {
+    el.querySelector('.st').textContent = '— não rodou';
+    pre.textContent = error;
+    return;
+  }
+  SRV.run = runId;
+  pre.textContent = '';
+  el.querySelector('.st').textContent = '— rodando';
+  const es = new EventSource('/_gate/stream?run=' + runId + '&from=' + (from || 0));
+  es.addEventListener('line', e => {
+    pre.textContent += e.data + '\\n';
+    pre.scrollTop = pre.scrollHeight;
+  });
+  es.addEventListener('end', e => {
+    es.close();
+    SRV.busy = false;
+    SRV.run = null;
+    el.querySelector('.kill').hidden = true;
+    let d = {};
+    try { d = JSON.parse(e.data); } catch (x) {}
+    SRV.gen = d.gen || SRV.gen;
+    el.classList.toggle('bad', d.code !== 0);
+    el.querySelector('.st').textContent = d.code === 0 ? '— pronto' :
+      '— parou com erro ' + d.code + ', nada mudou de página';
+    if (d.outcome === 'reload') { srvUndirty(); setTimeout(() => location.reload(), 700); }
+    if (d.outcome === 'ends_session') {
+      document.querySelectorAll('#srvbar button').forEach(b => b.disabled = true);
+      el.querySelector('.st').textContent =
+        '— pronto. O trabalho saiu desta pasta; esta página é só leitura agora.';
+    }
+  });
+  es.onerror = () => {
+    // The stream drops when the server stops answering, which after an
+    // ends_session run is the expected ending, not a failure.
+    es.close();
+    SRV.busy = false;
+  };
+}
+
+async function srvCancel() {
+  if (!SRV.run) return;
+  if (!confirm('Interromper a rodada?\\n\\nO que já foi enviado à fal.ai já foi ' +
+      'cobrado. Uma foto no meio do caminho pode ficar sem o _edit.jpg — nesse ' +
+      'caso ela volta a rodar na próxima vez.')) return;
+  try {
+    await fetch('/_gate/cancel', { method:'POST', headers:srvHead(false),
+                                   body:JSON.stringify({ run:SRV.run }) });
+  } catch (e) {}
+}
+
+srvProbe();
 """
 
 

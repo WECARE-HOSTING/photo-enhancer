@@ -1,6 +1,6 @@
 # 2 - marca dagua — the WeCare mark
 
-_Last updated: 2026-07-31_
+_Last updated: 2026-08-03_
 
 **Input:** a `Job_NNNN/` approved at the edit gate, every photo carrying its
 `_edit.jpg`
@@ -46,7 +46,7 @@ ask for it.
 `review-marca.html` asks one question the other two pages cannot: *is the mark
 legible where it landed?*
 
-The mark is 295×56 px on a 2048 px photo — 2% of the frame. That does not
+The mark is 166×205 px on a 2048 px photo — under 1% of the frame. That does not
 survive a thumbnail, so the page's primary view is a **1:1 crop of the top-left
 corner** at native resolution. It is done with `object-fit:none` in CSS, not by
 writing crop files: 60 extra files per job would have cost 3.6 MB in every
@@ -58,11 +58,15 @@ Each photo shows the measurement that chose its ink. Those numbers are measured
 fresh on every page write, never read out of `marca.md` — no script in this
 project reads a log to decide anything.
 
-Marking a photo sends it back; the radios force the ink. Both travel through
-`gate.txt` the same way stage 1's comments do:
+Marking a photo sends it back; the radios force the ink. Press **Refazer as
+marcadas** and the page writes `gate.txt` and runs `--rework` for you; **Re-marcar
+todas** is `--rebrand`, and **Aprovar e arquivar** ends the review. Without a
+server, "Copiar marcações" and a paste into `gate.txt` do the same thing — both
+buttons call the same function, so the bytes are identical. Either way the marks
+travel through `gate.txt` the way stage 1's comments do:
 
 ```
-SALA_01_0001   # o navy sumiu no rodapé claro    variant=claro
+SALA_01_0001   # a marca preta sumiu no rodapé escuro    variant=claro
 ```
 
 An override applies to that run. **It is not remembered anywhere**, and it does
@@ -77,17 +81,20 @@ exists because it is 2.7 KB of prose edited weekly, and this is six numbers.
 
 | Constant | Now | What it does |
 |---|---|---|
-| `LOGO_WIDTH_PCT` | `0.144` | mark width over the photo's **long edge** — 295 px at 2048 |
+| `LOGO_HEIGHT_PCT` | `0.10` | mark **height** over the photo's **long edge** — 205 px at 2048 |
 | `MARGIN_PCT` | `0.03` | inset from top and left — 61 px |
 | `OPACITY` | `0.85` | of the art |
-| `MIN_CONTRAST` | `4.0` | below this the glow comes on |
+| `MIN_CONTRAST` | `4.0` | below this the glow comes on — unreachable with this art |
 | `BUSY_STD` | `0.18` | background spread that counts as busy |
 | `GLOW_RADIUS_PCT` / `GLOW_OPACITY` | `0.35` / `0.45` | halo size and strength |
-| `JPEG_QUALITY` / `JPEG_SUBSAMPLING` | `95` / `0` | 4:4:4 — chroma subsampling smears the gold against the navy |
+| `JPEG_QUALITY` / `JPEG_SUBSAMPLING` | `95` / `0` | 4:4:4 — the mark is the frame's one hard edge |
 
-**Scaled by the long edge, not the width.** By width, a portrait photo would get
-a mark 33% smaller than a landscape one in the same gallery. By long edge it is
-295×56 in both, because everything here is 2048 px on its long side.
+**By height, and over the long edge.** The lockup is **stacked** — pin over
+`wecare. HOSTING`, taller than it is wide — so the constant that matters is its
+height; sizing a stacked mark by its width makes it tower over the room. And over
+the long edge, not the photo's own height, because by height a portrait photo
+would get a mark 33% bigger than a landscape one in the same gallery. It is
+205 px tall in both, since everything here is 2048 px on its long side.
 
 ## How the ink is chosen
 
@@ -101,28 +108,42 @@ alpha — only the pixels the strokes land on count, not the gaps between them.
    blurred, in the opposite tone. **A halo that follows the letterforms — never
    a box or a band**, which would wreck the photograph.
 
-Calibrated against the 174 archived photographs: **69% navy · 31% cream · glow
-on 33% · worst contrast 3.37:1 · median 6.02:1.**
+Measured over 278 real photographs (the whole archive plus Job_0023) at this mark
+size: **75% preta · 25% branca · glow on 21% · worst contrast 4.61:1 · median
+9.34:1.**
 
-Both thresholds were measured, not guessed, and the guesses were wrong in both
-directions: `3.0` would never have fired at all (the worst real case is 3.37:1)
-and `0.10` fired on **52%** of photographs at this size. If you change them, re-measure — running
+**Step 2 can no longer fail, and that is a property of the art.** Pure black and
+pure white sit at the two ends of the luminance scale, so the worst background
+imaginable is the one where they tie — and even there the winner is 4.58:1.
+`MIN_CONTRAST = 4.0` is therefore unreachable: with this art the glow is decided
+by `BUSY_STD` alone. The constant stays because it is the floor a future
+non-extreme colourway would need, and it is the number the page prints.
+
+`BUSY_STD` was measured, not guessed, and it moves with the size: at `0.08` the
+glow fires on 13% of photographs, at `0.10` on 21%, at `0.14` on 28% — a bigger
+mark samples a bigger patch. **Re-measure when you change the size**; running
 `marca.py` over `3 - completed/` costs nothing.
+
+The one case no threshold catches is a mark that **straddles an edge** — half on a
+dark headboard, half on a light ceiling reads as a low spread over a mid
+luminance, and one half of the lockup goes quiet. That is what `glow=on` at the
+gate is for.
 
 ## The art
 
-`_config/logos/wecare-hosting-horizontal-{escuro,claro}.png`.
+`_config/logos/logo preto.png` and `_config/logos/logo branco.png` — the stacked
+lockup, pin over `wecare. HOSTING`, 1301×1606 with one ink and nothing else in it.
 
 | | |
 |---|---|
-| **`claro` and `escuro` name the ink, not the background** | The navy `#0C2330` goes on a **light** wall; the cream `#F2EAD9` goes on a **dark** room. Reading these backwards is the obvious mistake |
-| Both share one alpha geometry | Same bbox, same coverage. One mask, two inks, which is what makes the glow simple |
-| The PNGs carry transparent padding | 52 px left, 55 px top, and the two lockups pad differently. `Logo` crops to the alpha bbox first — sizing by the canvas would render 5% less art and put the margin somewhere other than where the constant says |
-| The gold `#B79152` is the fragile part | It is in both colourways and is a mid-tone, so in warm light it loses force while the navy or cream carries the mark. If it starts disappearing, raise `MIN_CONTRAST` — do not change the algorithm |
-| The empilhado lockup and the SVGs are unused | Kept in the folder, read by nothing. Measured, the choice between lockups was pure taste: the glow rate follows the **area** the art covers, not its shape |
+| **`claro` and `escuro` name the ink, not the background** | Black `#000000` goes on a **light** wall; white `#FFFFFF` goes on a **dark** room. Reading these backwards is the obvious mistake |
+| One ink, no third colour | The previous art was navy and cream, both carrying a mid-tone gold `#B79152` that lost force in warm light — the fragile part every threshold was built around. A single pure ink has no such part, which is why the contrast floor stopped mattering. **Do not put a third colour back into the PNGs without re-measuring** |
+| The two exports do not crop alike | The white one carries 29 px more above the pin, so the aspects differ by 1.8%. `geometry()` runs **per art**, not once for the pair — deriving the width from the black one and painting the white one into it stretched it by that much. Same height, same corner, a couple of pixels narrower |
+| One mask measures both | The patch is read through the black art's alpha whichever ink wins. Their coverage differs by 0.5%, far under anything the decision turns on, and measuring twice would only let two answers disagree about one patch |
+| The PNGs carry transparent padding | 342 px left, 79 top, on a 2000×2000 canvas. `Logo` crops to the alpha bbox first — sizing by the canvas would render a third of the asked-for art and put the margin somewhere other than where the constant says |
 
-**Replacing the art:** same two filenames, transparent PNG, at least 600 px
-wide. The next run re-marks everything by mtime.
+**Replacing the art:** same two filenames, transparent PNG, at least 600 px on its
+long side. The next run re-marks everything by mtime.
 
 ## Why the mark is composed here and not asked of the model
 

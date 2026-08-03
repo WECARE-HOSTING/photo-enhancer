@@ -21,7 +21,7 @@ a failed job — it misrepresents a property someone will rent or buy.
 3 - completed/     the archive. index.md, archive.py, and the finished jobs
 _config/           .env (FAL_KEY, gitignored), .venv/, requirements.txt,
                    logos/, Seletor/RULES.md + AMBIENTES.md,
-                   paths.py ledger.py gate.py stage.py fal.py (shared)
+                   paths.py ledger.py gate.py serve.py stage.py fal.py (shared)
 _dependencies.md   what breaks what, when a file here changes
 ```
 
@@ -77,13 +77,15 @@ edits a retouch replaced, kept so you can go back, and discarded on approval.
 | A photographer sent a link, a zip, or hundreds of photos | `0 - selection/fetch.py` | `0 - selection/CONTEXT.md` |
 | Change how photos get chosen | `_config/Seletor/RULES.md` | same → "Editing the rules" |
 | Change what rooms are called, or add a photographer's word | `_config/Seletor/AMBIENTES.md` | that file → "The vocabulary" |
-| One photo is filed under the wrong room | change it under the photo in `review-selection.html`, "Copy ambientes.md", re-run `cull.py --no-classify` | `0 - selection/CONTEXT.md` → "The contact sheet is the gate" |
+| One photo is filed under the wrong room | change it under the photo in `review-selection.html`, then 'Salvar e re-cortar' (free). Without a server: "Copy ambientes.md", paste, re-run `cull.py --no-classify` | `0 - selection/CONTEXT.md` → "The contact sheet is the gate" |
 | Two rooms of the same kind came back as one | `cull.py` asks the pictures — see `split_ambientes`. When it gets it wrong: `+ novo QUARTO` in `review-selection.html`, or the `Sala` column of `ambientes.md`. Your number always wins | same |
 | A room name is right but the description under it is not | the two are different passes and both are shown on the tile now — `viu` is the classifier, `escolheu` is the picker. A red mark means the picker says the photo is not of that room at all | same |
 | See what a room label maps to, free | `0 - selection/ambientes.py "Sala Cobertura"` | same |
 | Turn the picks into a job | `0 - selection/develop.py <shoot>` | same → "The handoff" |
 | Run a job through the API | `1 - edit/batch.py` | `1 - edit/CONTEXT.md` → "Running it" |
-| Judge the edits, send some back | the job's `review-edit.html` → `gate.txt` → `batch.py --rework` | same → "The gate" |
+| Judge the edits, send some back | the job's `review-edit.html` → 'Refazer as marcadas'. Without a server: → `gate.txt` → `batch.py --rework` | same → "The gate" |
+| Check a retouch against what you asked for | the same page: three panes (`a` / `c` / `b`) and the sentence under the photo | same → "The gate" |
+| The page's buttons do nothing, or aren't there | it was opened from the disk, not from the server — re-run the stage command, or use the clipboard buttons beside them | `_config/serve.py` |
 | Change how outputs look, for every photo | `1 - edit/1 - edicao/PROMPT.md` | that folder's `CONTEXT.md` → "Editing PROMPT.md" |
 | Fix one photo, in your own words | the box under it in `review-edit.html` — that text is the whole prompt | `1 - edit/2 - retoque/CONTEXT.md` |
 | Change what the retouch tells the model about the two images | `1 - edit/2 - retoque/PROMPT.md` | same |
@@ -106,29 +108,63 @@ pipeline cannot make**, and each is a page in the job folder:
 
 ```bash
 ./_config/.venv/bin/python "0 - selection/cull.py" "0 - selection/<shoot>"   # -> review-selection.html
-#   tick your picks, 'Copiar picks', paste into picks.txt
+./_config/.venv/bin/python "1 - edit/batch.py"                               # -> review-edit.html
+./_config/.venv/bin/python "2 - marca dagua/batch.py"                        # -> review-marca.html
+```
+
+**Each of those opens the page in a browser and then waits there until Ctrl-C.**
+The page's own buttons write the file and run the next command — every step
+below is a button, behind a dialog that names the exact command and the counts
+before anything happens, with the output scrolling on the page. The terminal
+that started it stays a full log, so closing the tab loses nothing.
+
+```
+0 - selection/   tick your picks              -> 'Revelar o trabalho'    (develop.py)
+                 fix a room under a photo     -> 'Salvar e re-cortar'    (cull.py --no-classify)
+1 - edit/        a / b flips before-after full screen; mark what is wrong and
+                 write WHAT TO CHANGE — that text is the whole prompt of the
+                 retouch, and may ask what fase 1 forbids
+                                              -> 'Refazer as marcadas'   (--rework)
+                                              -> 'Aprovar e mandar adiante' (--approve)
+                 a photo that came back from a retouch shows three panes
+                 (original / edição anterior / retoque, keys a / c / b) and the
+                 sentence you asked for, so you can check request against result
+2 - marca dagua/ the 1:1 crop                 -> 'Refazer as marcadas'   (--rework)
+                                              -> 'Re-marcar todas'       (--rebrand, free)
+                                              -> 'Aprovar e arquivar'    (--approve)
+```
+
+Every command is still exactly as typeable as before, and the page's clipboard
+buttons still work — open any page from the disk (`file://`) and it behaves as
+it always did: copy, paste into the file, run the command. `--no-serve` on any
+of the three commands skips the server entirely.
+
+```bash
 ./_config/.venv/bin/python "0 - selection/develop.py" "0 - selection/<shoot>"  # -> 1 - edit/Job_NNNN
-
-./_config/.venv/bin/python "1 - edit/batch.py"            # fase 1 -> review-edit.html, and stop
-#   a / b flips before-after full screen; mark what is wrong, write WHAT TO CHANGE —
-#   that text is the whole prompt of the retouch, and may ask what fase 1 forbids
-./_config/.venv/bin/python "1 - edit/batch.py" --rework   # fase 3 -> só as marcadas
-./_config/.venv/bin/python "1 - edit/batch.py" --approve  # -> 2 - marca dagua/
-
-./_config/.venv/bin/python "2 - marca dagua/batch.py"           # -> review-marca.html
-./_config/.venv/bin/python "2 - marca dagua/batch.py" --rebrand # tune it, free
-./_config/.venv/bin/python "2 - marca dagua/batch.py" --approve # -> 3 - completed/
+./_config/.venv/bin/python "1 - edit/batch.py" --rework    # fase 3 -> só as marcadas
+./_config/.venv/bin/python "1 - edit/batch.py" --approve   # -> 2 - marca dagua/
+./_config/.venv/bin/python "2 - marca dagua/batch.py" --rebrand  # tune it, free
+./_config/.venv/bin/python "2 - marca dagua/batch.py" --approve  # -> 3 - completed/
 ```
 
 **Run each command straight through.** There is no dry run, no preview, no
 pre-flight check — asking for one, or opening `CONTEXT.md` to look for one, is
 the wrong move.
 
+**An agent gets `--no-serve` behaviour for free and must not fight it.**
+`serve.enabled()` refuses when stdout is not a terminal, which is what stops a
+tool call from hanging forever on a server nobody can see or Ctrl-C. That check
+is load-bearing; do not "fix" it away. Same for the `PHOTO_ENHANCER_CHILD`
+guard, which is what stops a button's command from opening a second server on
+top of the one that launched it.
+
 **Never run `--approve` on your own initiative**, at any stage. Approving is the
 user saying this is good enough to send a client, and that is not a judgement to
 make for them. The same goes for `develop.py`, which moves a job just as much as
 `--approve` does, and for `archive.py --purge-source`, which deletes photographs.
-Run them when asked, and not before.
+Run them when asked, and not before. **This covers the buttons and the endpoints
+behind them**: an agent does not click 'Aprovar', and does not `curl` its
+`/_gate/run`, any more than it types the command.
 
 **Quote every path** — the folder names contain spaces.
 
@@ -146,6 +182,9 @@ photographs under whatever the rest of the batch voted for, which is how three
 photographs of a bed were delivered as `COZINHA`. `--vision` and the pass that
 tells two bedrooms apart add a few calls more. **`cull.py --no-classify` is the
 free re-run**, and stage 2 is local and free — `--rebrand` as often as you like.
+The page's 'Salvar e re-cortar' button is that free re-run and nothing else; the
+one button that spends money is 'Refazer as marcadas' in `1 - edit/`, and its
+dialog says so, with the count and the sentences, before it sends anything.
 
 **A finished run is handed over as-is — never open, compare, or grade the
 results.** Point the user at the page and stop there. Judging the photos is

@@ -21,6 +21,16 @@ logs/
 0 - selection/drop/*
 !0 - selection/drop/.gitkeep
 
+# A shoot is a real client's property. The whole folder stays local — the
+# picks, the room labels and the contact sheet name an address, and git
+# history does not forget.
+0 - selection/WC-*/
+
+# The ledgers name the shoots they recorded. They are this install's operating
+# record, not code, and `_config/ledger.py` writes the header back on the first
+# run of a fresh clone.
+*/ledger.md
+
 # Jobs in flight, and the archive. A job's folder location is its status;
 # committing that would make git a second, disagreeing source of truth.
 1 - edit/Job_*/

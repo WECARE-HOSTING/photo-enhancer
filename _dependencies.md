@@ -39,6 +39,8 @@ Four folders, one per process step. A job moves forward one folder at a time,
 | Numbers 1 and 2 were **reused**, not vacated | This is the dangerous part of the rename and the reason `_config/paths.py` exists. A stale `ROOT / "1 - input"` resolves to a folder that exists and is wrong: nothing raises, and photographs land silently in the wrong stage |
 | Every numbered folder has a `ledger.md` | One row per event. Did not exist before, in any form |
 | Three gates, not one | `0 - selection`, `1 - edit`, `2 - marca dagua`. `3 - completed` has none — approving what is already home approves nothing |
+| The gates write their own files, since 2026-08-02 | `_config/serve.py` puts each page behind a local server so its buttons can write `picks.txt`, `ambientes.md` or `gate.txt` and run the next command. **`1 - edit/` is still the only stage that spends**, and the only button that does says so with a count before it sends. The clipboard route is untouched and still works from `file://` — see `_config/serve.py` below |
+| `requirements.txt` did not change | `serve.py` is stdlib only (`http.server`, `subprocess`, `secrets`, `threading`). That is what makes a server in this project cheap enough to be worth having, and it is worth keeping true |
 
 ## `_config/paths.py`
 
@@ -48,7 +50,8 @@ the restructure; three of them were in `organize.py` and died with it.
 | | |
 |---|---|
 | Depended on by | every script in the project |
-| Owns | `SELECTION_DIR` `EDIT_DIR` `MARCA_DIR` `COMPLETED_DIR`, `JOB_DIRS`, `rel()`, `cmd()`, `notify()` |
+| Owns | `SELECTION_DIR` `EDIT_DIR` `MARCA_DIR` `COMPLETED_DIR`, `JOB_DIRS`, `VENV_PY`, `VENV_PY_ABS`, `rel()`, `cmd()`, `notify()` |
+| `VENV_PY` vs `VENV_PY_ABS` | The first is the relative string you paste and read as "from the project root"; the second is the same interpreter, absolute, for `serve.py` to spawn with. A `subprocess` given the relative one resolves it against whatever cwd the parent happened to have |
 | Why `cmd()` exists | There were **34** hardcoded `./_config/.venv/bin/python "<stage>/<script>.py"` strings in printed next-steps, argparse help and docstrings — including one baked inside the generated review page's JavaScript, which is what the Approve button puts on your clipboard. Derived from `__file__`, a printed command cannot outlive a rename; typed out, it fails silently and confusingly |
 | The one that nearly bit | `develop.py`'s `INPUT_DIR = ROOT / "1 - input"`. The row in this file whose entire purpose was making a folder rename safe **did not list it** |
 | Renaming a stage | Change it here and nowhere else, then run the grep at the top of this file for the old name |
@@ -60,6 +63,7 @@ the restructure; three of them were in `organize.py` and died with it.
 | Depended on by | `cull.py`, `develop.py`, both `batch.py`, `archive.py`, `gate.py` (for `cell()`) |
 | Owns | `ledger.md`'s five columns and the five-word event vocabulary |
 | **The rule that keeps this safe** | **Logs are write-only for the pipeline and read-only for humans. No script ever reads a log to decide what to do next.** The filesystem is still the state. The moment a log becomes an input it can disagree with the disk — the exact class of bug rework-by-deletion was built to eliminate |
+| The rule as it stands now | Still true of every `ledger.md`, and **none of them may become an input**. Two files inside a job are read back, both knowingly: `<name>_log.md` (see below) and `gate.md` (by `gate.passes()`, so `review-edit.html` can show what you asked). Neither *decides* anything — one is an upload optimisation, the other is drawn on a page — and the disk is still the state |
 | The event words are closed | `entered` · `run` · `gate` · `left` · `stopped`. Closed because a free vocabulary drifts across five scripts, and because `grep '\| gate \|' */ledger.md` has to mean one thing |
 | A row must not hold a fact that exists nowhere else | Counts, a timestamp, a name, a pointer. Lose a job folder and you lose the detail but keep that it existed and where it went |
 | The `left` row names its destination | That pointer is the only thing stopping a stage log from being divorced from its subject once the job has moved on |
@@ -70,12 +74,15 @@ the restructure; three of them were in `organize.py` and died with it.
 
 | | |
 |---|---|
-| Depended on by | both `review.py`, both `batch.py`, `develop.py`, `cull.py` (`PAGES` only) |
-| Owns | the palette, the shared page CSS/JS, `copy()`, the `gate.txt` format, `gate.md`, and the three page names |
+| Depended on by | both `review.py`, both `batch.py`, `develop.py`, `cull.py` |
+| Owns | the palette, the shared page CSS/JS, `copy()`, the `gate.txt` format, `gate.md` and its reader (`passes()`), the three page names, and `SERVE_CSS`/`SERVE_JS` — the client half of `serve.py` |
 | **The wire format** | `NAME  # why` sends a photo back; `+NAME  # note` keeps it and records the note. That is the old `rework.txt` grammar plus two characters, so muscle memory survives. **A trailing `#` is a comment** — see the live bugs below |
 | Options ride in the comment | `variant=claro`, `glow=on`. Applied to that run only. **Never persisted**: the resulting `_final.jpg` on disk *is* the persistence, and a file storing the override would be a second source of truth able to disagree with the image |
 | CSS/JS are injected via `.format()` | So they no longer need doubled braces. `review.py`'s stylesheet used to be written `{{ … }}` throughout for that reason alone |
-| Why the clipboard, still | A browser page cannot write into the folder it sits in, and a download landing in `~/Downloads` would be worse than a copy button |
+| Why the clipboard, still | A page opened from the disk cannot write into the folder it sits in, and a download landing in `~/Downloads` would be worse than a copy button. Opened from `serve.py` it POSTs instead — **the clipboard buttons never go away**, they stop being the only route |
+| The two routes cannot drift | `SERVE_JS` composes nothing. It calls the page's own producer through `GATE_TEXT` — `payload()`, `picksText()`, `catalogText()` — the same function the copy button calls. Saved and pasted are the same bytes by construction, which is a cheaper correctness argument than any test |
+| `SERVE_CSS` names two palettes in every `var()` | `cull.py`'s page does not use `BASE_CSS`; it has an older palette with different names (`--pick`, `--flag`). Every colour is written `var(--ok, var(--pick))` so one stylesheet drops into either page. Folding the two palettes is a separate refactor with its own blast radius |
+| `srvUndirty()` is a check, not an assignment | `BASE_JS`'s unsaved-work flag does not exist on the selection page, and a bare `dirty = false` there would silently create a global that nothing reads |
 | The copy button copies the **whole file** | Not the delta. Pasting twice is then harmless; a delta would silently double every record |
 | Every run pre-creates `gate.txt` | Telling someone to paste into a file that does not exist means TextEdit, and TextEdit defaults to RTF. You get `gate.txt.rtf` and an error saying "no gate.txt", which points at the wrong problem. `parse()` also **rejects RTF by name** and says how to fix it |
 | The page is pre-filled from `gate.txt` | Which is why there is no `localStorage` layer: the durable draft is the file, and Safari refuses browser storage under `file://` anyway. A `beforeunload` warning prevents the loss instead of recovering from it |
@@ -264,7 +271,9 @@ because breaking it **fails silently and still works**.
 |---|---|
 | Written by | `1 - edicao/enhance.py` — the whole file, from scratch, on every phase-1 run |
 | Appended to by | `2 - retoque/retoque.py` — one `## Retoque N` block per retouch, never rewriting what is above |
-| **Parsed by** | `2 - retoque/retoque.py`, for exactly one line: `\| Uploaded source \| <url> \|` |
+| **Parsed by** | `2 - retoque/retoque.py`, twice over: `recorded_source_url()` for `\| Uploaded source \| <url> \|`, and `history()` for every `## Retoque N` heading with its `\| Instrução humana \|` and `\| Edit anterior \|` rows |
+| The second reader | `history()` feeds `review-edit.html`'s request list and its third pane. Nothing decides from it — the page draws, and a hand-edited log costs that photograph its history and nothing else. But those row labels are a contract now: rename one in the writer and rename it in `history()`, same commit |
+| The instruction goes through `ledger.cell()` | Since 2026-08-02. It did not, and a `\|` typed inside a sentence ended the row early — harmless while nothing read it back, a truncated sentence on the page the moment something did. The `Prompt as sent` fence stays verbatim |
 | The pair that must agree | `enhance.SOURCE_URL_LABEL` writes it, `retoque.SOURCE_URL_RE` reads it. **Change one and change the other** |
 | What breaks if they disagree | The original is uploaded a second time on every retouch. ~4s and a few cents per photo, no error, no wrong output — the kind of breakage nobody notices for months |
 | Why the first match wins | Phase 1's block is at the top and its URL is the original photograph. A later retouch block may record a re-upload: same image, but not the authoritative row |
@@ -302,17 +311,43 @@ Siblings. **A fix to one should be checked against the other.**
 | Stage 1's A/B flip | Side by side answers *did it change*, not *did it change correctly* — the eye cannot carry a 3° lean across a gap. Both images are already in the DOM, so swapping the lightbox `src` is instant and lands on the same pixels |
 | Stage 2's 1:1 crop is **CSS**, not a file | `object-fit:none` with `object-position:0 0` shows native pixels with no resampling. Crop files would have cost 3.6 MB per job forever — and a `<stem>_crop.jpg` carries no result marker, so `photos_in()` would read each one as a source photograph and send it to the paid API |
 | Stage 2's numbers are measured fresh | `marca.run(write=False)`, never read out of `marca.md`. No script reads a log to decide anything |
+| Stage 1's third pane | Appears only when a `<stem>_edit_r*.jpg` exists: `original / edição anterior / retoque`, keys `a` / `c` / `b`. The captions changed with it — "antes"/"depois" is wrong the moment there are three, and all three are a before and an after of something |
+| Which shelved file the third pane shows | The newest on **disk**, not the newest the log names. The log outlives the file (`--approve` deletes them via `drop_shelved`), and the disk is what can actually be displayed |
+| All three pages write through a temporary | `.html.new` then `replace()`. A page is rewritten while a browser may be asking for it, and half a page renders as a job with no photographs rather than as an error |
+
+## `_config/serve.py`
+
+| | |
+|---|---|
+| Depended on by | `cull.py`, both `batch.py`. Its client half lives in `gate.py` (`SERVE_CSS`, `SERVE_JS`, `SERVE_BAR`) and the two do not import each other |
+| Owns | the local server, the action registry, the write sandbox, the token, the one-run-at-a-time rule, and the child guard |
+| **Not a shell** | A request names an *action*; the argv is built here from the registry the stage script handed over at startup. There is no path from anything a browser sends to anything a shell sees. The filename written comes from `Action.writes`, never from the request — `safe_join()` is defence in depth behind that |
+| Binds `127.0.0.1` on port `0` | The OS picks, so never "address in use" and never a stale URL. A fresh `secrets.token_urlsafe(16)` per run, required as `X-Gate-Token` on every POST. Static GETs are open on purpose: they serve a folder you can already read, and locking them would mean a cookie bought for nothing |
+| The generation counter | `X-Gate-Gen` on every POST; a mismatch is a **409** and the page says to reload. This is the two-tabs case, and it is the one that matters — tab 2, still holding round 1's marks, would otherwise clobber `gate.txt` with stale text |
+| **The child is a subprocess, never in-process** | Four independent reasons: a nested `serve_forever()` inside a handler thread never returns; every script's error contract is `sys.exit()`, and a subprocess gives you the same exit code and the same bytes the terminal would show; `--approve` moves the folder being served and must happen where the process can die afterwards; and a paid run has to be killable |
+| `PYTHONUNBUFFERED=1` on the child | Load-bearing. `batch.py` prints one block per photo, and without it the pipe holds 8 KB and the page is silent for four minutes and then says everything at once |
+| **Two guards against a second server** | `--no-serve` on every action that re-invokes its own script, **and** `PHOTO_ENHANCER_CHILD` in the child's environment, which makes `enabled()` refuse whatever the flag says. One forgotten argument in a registry row would otherwise mean a second port, a second tab, and a parent blocked forever on a pipe that never closes |
+| `enabled()` also refuses without a tty | An agent, a cron job, a pipe — nobody there can see the URL or press Ctrl-C, so serving is a hang, not a feature. **Do not remove this check** |
+| Who redraws the page | The child, exactly as it does from the terminal — `--rework` already ends by calling `write_review()`. This module never learns to build a page; on exit 0 it tells the browser to reload and serves what the child wrote |
+| A failed child does not reload | Its output is the thing to read, and reloading would wipe it off the screen. The generation does not move either, so the page stays valid |
+| The tab can close mid-run | The child belongs to the server, not the browser. Every line is appended to the run's buffer **and printed to the server's own stdout**, so the terminal stays a complete log; reopening the URL reconnects and replays |
+| `handle_error` swallows connection resets | A closed tab or a cancelled image load resets the connection, and the default prints twenty lines of traceback per event — on the terminal where the run's own output is the thing worth reading |
+| `server.shutdown()` never from a handler thread | It waits for the request in flight, which is the one calling it. `ends_session` schedules it on a timer, a second after the page has the `end` event |
+| Free to test | Entirely, and it has a `__main__` that serves any folder with a pretend action: `serve.py <pasta com um .html>` |
 
 ## `2 - marca dagua/marca.py`
 
 | | |
 |---|---|
-| Depends on | `_config/logos/wecare-hosting-horizontal-{escuro,claro}.png`, Pillow, numpy |
+| Depends on | `_config/logos/logo preto.png`, `_config/logos/logo branco.png`, Pillow, numpy |
 | Depended on by | `batch.py`, `review.py` (for `run(write=False)`) |
-| **`claro` and `escuro` name the ink, not the background** | Navy on a light wall, cream on a dark room. Reading it backwards is the obvious mistake |
-| Crops to the alpha bbox first | The PNGs carry 52px/55px of transparent padding and the two lockups pad differently. Sizing by the canvas renders 5% less art and puts the margin in the wrong place |
-| Scaled by the **long edge** | By width, a portrait photo gets a mark 33% smaller than a landscape one in the same gallery |
-| Thresholds were measured, not chosen | `MIN_CONTRAST = 4.0`, `BUSY_STD = 0.18`, against all 174 archived photographs: 69% navy, 31% cream, glow on 33%, worst 3.37:1, median 6.02:1. The first guesses were wrong in both directions — `3.0` would never have fired, `0.10` fired on 52%. **Re-measure if you change them**; it is free, and the numbers move with `LOGO_WIDTH_PCT` because a bigger mark samples a bigger patch |
+| **`claro` and `escuro` name the ink, not the background** | Black on a light wall, white on a dark room. Reading it backwards is the obvious mistake |
+| Crops to the alpha bbox first | The PNGs are 2000×2000 with 342 px of transparent padding on the left. Sizing by the canvas renders a third of the asked-for art and puts the margin in the wrong place |
+| Scaled by **height**, over the **long edge** | The lockup is stacked, taller than wide, so its height is the constant that matters — by width a stacked mark towers over the room. Over the long edge because by the photo's own height, a portrait photo gets a mark 33% bigger than a landscape one in the same gallery |
+| `geometry()` runs per art, not per pair | The two exports crop to aspects 1.8% apart (the white one has 29 px more above the pin). Deriving the width from the black one stretched the white one by that much |
+| `MIN_CONTRAST` is unreachable with this art | Pure black and pure white are the ends of the scale; the worst background is where they tie, and even there the winner is 4.58:1. With one pure ink per colourway the glow is decided by `BUSY_STD` alone. The constant stays as the floor a future non-extreme colourway would need, and as the number the page prints |
+| `BUSY_STD` was measured, not chosen | `0.18`, over 278 real photographs (the archive plus Job_0023) at `LOGO_HEIGHT_PCT = 0.10`: 75% preta, 25% branca, glow on 21%, worst 4.61:1, median 9.34:1. **Re-measure if you change the size**; it is free, and the glow rate follows it — 13% at `0.08`, 28% at `0.14` — because a bigger mark samples a bigger patch |
+| A straddling mark is the blind spot | Half on a dark headboard, half on a light ceiling measures as a low spread over a mid luminance, and half the lockup goes quiet. No threshold finds it — the patch really is uniform on average. `glow=on` at the gate is the answer |
 | Always reads the `_edit` | Never a `_final`. Marking is idempotent and JPEG loss never accumulates |
 | Replacing the logo re-marks everything | `needs_mark()` compares against the PNG's mtime |
 | No `MARCA.md` | `PROMPT.md` exists because it is 2.7 KB of prose edited weekly. This is six numbers, already calibrated. Constants at the top of the file, with the reasoning in comments |
@@ -354,17 +389,26 @@ photos on their own screen.
 photographs.
 
 **None of them may be run by an agent on its own initiative.** Stated in
-`CLAUDE.md` → "Running it" and repeated in each `CONTEXT.md`.
+`CLAUDE.md` → "Running it" and repeated in each `CONTEXT.md`. Every one of them
+is also a button on a review page now, and **that changes nothing**: an agent
+does not click it and does not `POST` its `/_gate/run`, any more than it types
+the command. A human clicking is the human's initiative; an agent reaching the
+same endpoint is the thing this rule exists to prevent.
 
 ## Text one script parses out of another's output
 
-Three, now — it used to be one, and this row used to say so.
+Six, now — it used to be one, and this row used to say so. The `Uploaded source`
+edge existed before and only lived in its own section; the last two arrived with
+the request history on `review-edit.html`.
 
 | Format | Written by | Read by |
 |---|---|---|
 | `**Dropped as:** …` | `develop.py` → `write_job_md()` | `archive.py` → `job_row()` |
 | `**Shoot:** \`path\`` | `develop.py` → `write_job_md()` | `archive.py` → `shoot_of()`, for `originais/` |
-| `gate.txt` | the gate pages' copy button | `gate.parse()` |
+| `gate.txt` | the gate pages, by clipboard or by `serve.py` | `gate.parse()` |
+| `\| Uploaded source \| … \|` | `enhance.py` → `SOURCE_URL_LABEL` | `retoque.py` → `SOURCE_URL_RE` |
+| `## Retoque N` + its rows | `retoque.py` → `run()` | `retoque.py` → `history()`, for `review-edit.html` |
+| `gate.md`'s decision table | `gate.fold()` | `gate.passes()`, for `review-edit.html` |
 
 Change the wording in a writer and the reader silently falls back to a dash.
 
@@ -406,5 +450,6 @@ Worth keeping, because four of them were silent and would come back the same way
   2026-07-27, kept verbatim. Nothing imports it.
 - `1 - edit/PROMPT_backup_*.md` — two earlier revisions, kept for the length
   comparison recorded in `CONTEXT.md`.
-- `_config/logos/` holds the `empilhado` lockup and four SVGs that nothing
-  reads. Kept because they are the brand's, not because anything needs them.
+- `_config/logos/` holds exactly the two PNGs `marca.py` names and nothing else.
+  The horizontal navy/cream lockup, the `empilhado` one and four SVGs were
+  replaced on 2026-08-03 by `logo preto.png` and `logo branco.png`.

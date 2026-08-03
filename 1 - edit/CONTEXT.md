@@ -56,9 +56,17 @@ the phase is already a column in the row (`run 1`, `gate`, `retoque 1`).
 ./_config/.venv/bin/python "1 - edit/batch.py" --rework               # fase 3 -> só as marcadas
 ./_config/.venv/bin/python "1 - edit/batch.py" --approve              # -> 2 - marca dagua/
 ./_config/.venv/bin/python "1 - edit/batch.py" --redo                 # fase 1 de novo, em tudo
+./_config/.venv/bin/python "1 - edit/batch.py" --no-serve             # sem servidor, volta ao prompt
 ```
 
 The folder names have spaces in them — **quote every path**.
+
+**A run ends by opening the page in a browser and waiting there until Ctrl-C.**
+`--rework`, `--redo` and `--approve` are all buttons on it, each behind a dialog
+naming the exact command; the output streams onto the page and into the terminal
+both, so closing the tab loses nothing. `--no-serve` skips all of that and gives
+the prompt straight back — which is also what happens automatically when stdout
+is not a terminal, so an agent never waits on a server it cannot stop.
 
 **There is no preview step. `batch.py` submits.** No `--dry-run`, no pre-flight cost
 estimate, nothing to check first — the command above is the whole thing. (A
@@ -101,9 +109,29 @@ eye cannot carry a 3° wall lean or an invented chair across a gap. The flip swa
 two in place, at identical scale and position, and a wrong edit that survives a
 side-by-side does not survive it.
 
-Mark what is **not** good enough, **write why in the box under it**, press **Copiar
-marcações**, and paste into `gate.txt` beside the page — the file is already there,
-created by the run, so `open -e` gives you plain text and the job is ⌘A ⌘V ⌘S.
+**A photograph that has come back from a retouch shows three panes, and what you
+asked for.** `original / edição anterior / retoque`, flipped with `a` / `c` / `b`,
+and under them the sentences you wrote — newest always open, older ones folded,
+each with a button that opens the edit *that* request replaced. After eight
+requests in one round nobody remembers which sentence went with which
+photograph, and without them on the page the second look answers "is this good"
+when the question is "is this what I asked for". A request whose retouch failed
+says so where its result would have been.
+
+The sentences are read back out of each photograph's `<stem>_log.md` and out of
+`gate.md`, by `retoque.history()` and `gate.passes()`. That makes the retouch
+block a format with a second reader — see `2 - retoque/CONTEXT.md`.
+
+Mark what is **not** good enough, **write why in the box under it**, and press
+**Refazer as marcadas** — the dialog lists every photograph going back with the
+sentence you wrote under it, which is the last chance to notice a sentence typed
+under the wrong photo, and says that fal.ai bills per photograph. Confirm and it
+writes `gate.txt`, runs `--rework`, and reloads the page on the results.
+
+Without a server: press **Copiar marcações** and paste into `gate.txt` beside the
+page — the file is already there, created by the run, so `open -e` gives you plain
+text and the job is ⌘A ⌘V ⌘S. Both buttons produce the same bytes; they call the
+same function.
 
     SALA_01_0002        # a pessoa da janela sumiu, põe de volta
     +COZINHA_01_0001    # bancada clareou mais do que eu queria, mas passa

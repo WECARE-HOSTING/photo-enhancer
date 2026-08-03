@@ -5,9 +5,9 @@ Written by `batch.py`. This is the last look before a photograph reaches a
 client, and it asks one question the other two pages cannot: **is the mark
 legible where it landed?**
 
-That question does not survive a thumbnail. The mark is 295×56 px on a 2048 px
-photo — 2% of the frame — so the primary view here is a **1:1 crop of the top-left
-corner**, at native resolution.
+That question does not survive a thumbnail. The mark is 166×205 px on a 2048 px
+photo — under 1% of the frame — so the primary view here is a **1:1 crop of the
+top-left corner**, at native resolution.
 
 The crop is CSS, not a file: `object-fit:none` with `object-position:0 0` inside
 a fixed box shows the image's own top-left pixels at exactly 1:1, with no
@@ -91,15 +91,15 @@ def write(job: Path, trios: "list[tuple[Path, Path, dict]]", wall: str,
         badge = (f'{f["variant"]} · {f["contrast"]:.2f}:1'
                  + (f' · glow ({f["reason"]})' if f["glow"] else ""))
         detail = (f'fundo L {f["L"]:.3f} · desvio {f["std"]:.3f} · '
-                  f'navy {f["c_dark"]:.2f}:1 · creme {f["c_light"]:.2f}:1')
+                  f'preta {f["c_dark"]:.2f}:1 · branca {f["c_light"]:.2f}:1')
         k = gate.esc(stem)
 
         radios = "".join(
             f'<label class="opt"><input type="radio" data-opt data-key="{k}" '
             f'name="v_{k}" value="{v}"{" checked" if v == "" else ""}>'
             f'<span>{lbl}</span></label>'
-            for v, lbl in (("", "auto"), ("variant=escuro", "navy"),
-                           ("variant=claro", "creme"), ("glow=on", "+glow")))
+            for v, lbl in (("", "auto"), ("variant=escuro", "preta"),
+                           ("variant=claro", "branca"), ("glow=on", "+glow")))
 
         rows.append(
             f'<div class="pair" data-item id="{k}">'
@@ -135,19 +135,20 @@ def write(job: Path, trios: "list[tuple[Path, Path, dict]]", wall: str,
                 + ". Rode <code>batch.py</code> de novo — é grátis.</p>")
 
     glows = sum(1 for _, _, f in trios if f["glow"])
-    creme = sum(1 for _, _, f in trios if f["variant"] == "claro")
+    brancas = sum(1 for _, _, f in trios if f["variant"] == "claro")
     approve = paths.cmd(Path(__file__).resolve().parent / "batch.py",
                         "--approve", "--job", job.name)
 
     dest = job / NAME
-    dest.write_text(TEMPLATE.format(
-        css=gate.BASE_CSS + OWN_CSS,
-        js=gate.BASE_JS,
+    page = TEMPLATE.format(
+        css=gate.BASE_CSS + OWN_CSS + gate.SERVE_CSS,
+        js=gate.BASE_JS + gate.SERVE_JS,
+        srv_bar=gate.SERVE_BAR,
         body="\n".join(rows),
         job=gate.esc(job.name),
         n=len(trios),
-        navy=len(trios) - creme,
-        creme=creme,
+        pretas=len(trios) - brancas,
+        brancas=brancas,
         glows=glows,
         wall=gate.esc(wall),
         stamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -162,7 +163,12 @@ def write(job: Path, trios: "list[tuple[Path, Path, dict]]", wall: str,
         js_prefill=gate.js([
             {"key": m.key, "back": m.back, "comment": m.comment, "opts": m.opts}
             for m in (marks or [])]),
-    ), encoding="utf-8")
+    )
+    # Through a temporary: a browser may be asking for this page while the run
+    # that rewrites it is still going.
+    scratch = dest.with_suffix(".html.new")
+    scratch.write_text(page, encoding="utf-8")
+    scratch.replace(dest)
     return dest
 
 
@@ -205,7 +211,7 @@ TEMPLATE = """<title>{job} — marca</title>
 <style>{css}</style>
 
 <h1>{job} — marca d'água</h1>
-<p class="sub">{n} foto(s) · {navy} navy · {creme} creme · {glows} com glow ·
+<p class="sub">{n} foto(s) · {pretas} preta(s) · {brancas} branca(s) · {glows} com glow ·
 {wall} · {stamp}<br>
 O recorte da esquerda é <b>1:1, pixels reais</b> — é ali que se vê se a marca
 some. Marque a foto para refazê-la e, se quiser, force a tinta. Remarcar é
@@ -222,6 +228,7 @@ grátis: não há chamada de API neste estágio.<br>
   <button class="bad" onclick="copyMarks()">Copiar marcações</button>
   <button onclick="setAll(false)">Limpar</button>
   <button class="go" id="ok" onclick="copyApprove()">Aprovar e arquivar</button>
+  {srv_bar}
   <span id="hint">Cole em <code>{gate_file}</code>, ao lado deste arquivo</span>
 </div>
 
@@ -232,6 +239,24 @@ const APPROVABLE = {js_approvable};
 const PREFILL = {js_prefill};
 function copyApprove() {{
   copy({js_approve}, 'Comando copiado — cole no terminal para arquivar o trabalho');
+}}
+
+// What the server writes. `payload()` is the same function "Copiar marcações"
+// calls, tinta radios and all, so the two routes cannot drift.
+const GATE_TEXT = {{ '{gate_file}': payload }};
+
+function srvSummary(name) {{
+  const esc = s => String(s).replace(/[&<>]/g,
+    c => ({{ '&':'&amp;', '<':'&lt;', '>':'&gt;' }}[c]));
+  const back = boxes().filter(b => b.checked).map(b => {{
+    const t = noteOf(b.dataset.key), o = optOf(b.dataset.key);
+    const n = [t ? t.value.replace(/\\s+/g, ' ').trim() : '', o].filter(Boolean);
+    return {{ k: b.dataset.key, n: n.join(' ') }};
+  }});
+  if (!back.length) return '';
+  return '<p>' + back.length + ' foto(s) ganham a marca de novo:</p><ol>' +
+    back.map(x => '<li><code>' + esc(x.k) + '</code>' +
+      (x.n ? ' <q>' + esc(x.n) + '</q>' : '')).join('') + '</ol>';
 }}
 {js}
 </script>

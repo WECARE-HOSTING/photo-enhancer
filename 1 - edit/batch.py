@@ -60,6 +60,7 @@ import gate  # noqa: E402
 import ledger  # noqa: E402
 import paths  # noqa: E402
 import review  # noqa: E402
+import serve  # noqa: E402
 import stage  # noqa: E402
 
 # The two phases this script drives, each from its own folder. Imported by path
@@ -175,12 +176,50 @@ def write_review(job: Path, model: str, wall: str) -> Path:
     # a line pasted as `SALA_01_0001_edit.jpg` has to arrive here as the stem or
     # it silently pre-fills nothing.
     marks, _ = resolve(job)
-    dest = review.write(job, pairs, model, wall, missing, marks)
+    # What has already been asked of each photograph, so the page can show the
+    # request next to the result. Read out of the logs and `gate.md` at draw
+    # time — the sentences ride to a run in memory and are never state.
+    dest = review.write(job, pairs, model, wall, missing, marks,
+                        history=review.gather(job, pairs))
     gate.ensure_stub(job, review.NAME, job.name)
     print(f"\npágina      {paths.rel(dest)}")
     print(f'  open      "{dest}"')
     print(f'  open -e   "{job / gate.NAME}"     # cole aqui (⌘A ⌘V ⌘S)')
     return dest
+
+
+def gate_actions(job: Path) -> "dict[str, serve.Action]":
+    """The buttons `review-edit.html` gets when a server is behind it.
+
+    Every one of them writes the same `gate.txt` the clipboard button produces
+    and then runs the same command the terminal would. `--no-serve` on each: the
+    child must not open a second server on top of the one launching it.
+    """
+    me = Path(__file__).resolve()
+    job_args = ("--job", job.name, "--no-serve")
+    return {a.name: a for a in (
+        serve.Action("save_gate", f"Salvar em {gate.NAME}", writes=gate.NAME,
+                     note="grava as marcações e para aí — nada é enviado"),
+        serve.Action("rework", "Refazer as marcadas", writes=gate.NAME,
+                     script=me, args=("--rework", *job_args), tone="bad",
+                     danger="A fal.ai cobra por foto enviada. Cada frase acima "
+                            "vira o prompt inteiro de um retoque.",
+                     note="fase 3: retoca só as marcadas, a partir do _edit"),
+        # Same rule as the clipboard Aprovar button: approving a job you have
+        # just ticked photographs in throws that rework away at the archive step.
+        serve.Action("approve", "Aprovar e mandar adiante", writes=gate.NAME,
+                     script=me, args=("--approve", *job_args), tone="go",
+                     note="move o trabalho para 2 - marca dagua/",
+                     outcome="ends_session", needs_clean=True),
+    )}
+
+
+def serve_gate(job: Path, allowed: bool, photos: int) -> None:
+    """Hand the page over to a local server, and wait there until Ctrl-C."""
+    if not serve.enabled(allowed):
+        return
+    serve.run(root=job, page=review.NAME, actions=gate_actions(job),
+              title=job.name, counts={"fotos": photos})
 
 
 def approve(job: Path) -> None:
@@ -243,6 +282,11 @@ def main() -> None:
                          "it edits the result, not the source")
     ap.add_argument("--approve", action="store_true",
                     help="you looked at the page and it is good — move the job on")
+    ap.add_argument("--serve", action=argparse.BooleanOptionalAction, default=True,
+                    help="hand the review page to a local server so its buttons "
+                         "work, and wait there until Ctrl-C (default: yes). "
+                         "--no-serve is what every button passes to the command "
+                         "it launches, so a child never opens a second one")
     args = ap.parse_args()
 
     paths.EDIT_DIR.mkdir(exist_ok=True)
@@ -330,6 +374,7 @@ def main() -> None:
         write_review(job, args.model, "sem run")
         print("\nQuando estiver bom:\n  "
               + paths.cmd(Path(__file__), "--approve", "--job", job.name))
+        serve_gate(job, args.serve, len(all_photos))
         return
 
     workers = max(1, min(args.workers, len(photos)))
@@ -388,13 +433,17 @@ def main() -> None:
         print(f"\naviso       {whole}" if whole else
               f"\n{tally['failed']} foto(s) falharam — rode de novo para tentar "
               "só essas.\nA página acima mostra as que deram certo.")
+        serve_gate(job, args.serve, len(all_photos))
         return
 
     print("\nOlhe a página, e mande de volta o que errou:\n"
-          f"  marque, 'Copiar marcações', cole em {job.name}/{gate.NAME}, e\n  "
+          f"  marque, escreva o que mudar, e aperte 'Refazer as marcadas' —\n"
+          "  ou, sem servidor: 'Copiar marcações', cole em "
+          f"{job.name}/{gate.NAME}, e\n  "
           + paths.cmd(Path(__file__), "--rework", "--job", job.name)
           + "\n\nou aprove, que é a única coisa que move o trabalho adiante:\n  "
           + paths.cmd(Path(__file__), "--approve", "--job", job.name))
+    serve_gate(job, args.serve, len(all_photos))
 
 
 if __name__ == "__main__":

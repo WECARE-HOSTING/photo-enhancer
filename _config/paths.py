@@ -53,6 +53,12 @@ SELETOR_DIR = CONFIG_DIR / "Seletor"
 
 VENV_PY = "./_config/.venv/bin/python"
 
+# The same interpreter, absolute. `VENV_PY` is a *printed* command and is
+# relative on purpose — it is what you paste, and it reads as the project root.
+# A `subprocess` spawn cannot use it: it would resolve against whatever cwd the
+# parent happened to have. `serve.py` runs the stage scripts, so it needs this.
+VENV_PY_ABS = CONFIG_DIR / ".venv" / "bin" / "python"
+
 
 def rel(p: "Path | str") -> str:
     """A path as you would type it from the project root. Falls back to the

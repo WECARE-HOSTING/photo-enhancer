@@ -124,6 +124,20 @@ works, just slower, which is the kind of breakage nobody notices. Both sides nam
 the constant (`SOURCE_URL_LABEL`, `SOURCE_URL_RE`) and `_dependencies.md` records
 the edge.
 
+**And the block below it has a second reader too.** `history()`, in this folder's
+`retoque.py`, reads every `## Retoque N` heading and its `| Instrução humana |`
+and `| Edit anterior |` rows back out, so `review-edit.html` can show you what
+you asked next to what came back. Nothing *decides* anything from it — the page
+draws, and a log that has been hand-edited costs that photograph its history and
+nothing else — but the row labels are now a contract. Rename one here and rename
+it in `history()` in the same commit.
+
+The instruction goes through `ledger.cell()` on the way in, the way `gate.md`'s
+does: a `|` typed inside a sentence would end the row early, and a sentence
+truncated at the first pipe is exactly what would appear on the page. The `Prompt
+as sent` fence below it is untouched and stays verbatim — that is the record of
+what the model actually received.
+
 ## Config
 
 Everything tunable is in `../../_config/fal.py`, shared with phase 1 — model,

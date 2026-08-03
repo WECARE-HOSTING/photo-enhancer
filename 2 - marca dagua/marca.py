@@ -16,30 +16,44 @@ only route compatible with the stage's contract.
 
 ## Choosing the ink
 
-The art comes in two colourways that share one alpha geometry: navy `#0C2330`
-for light backgrounds and cream `#F2EAD9` for dark ones. Both carry the gold
-`#B79152`. Which one goes on is decided per photo, from the pixels the art will
-actually cover:
+The art is the stacked WeCare lockup — pin over `wecare HOSTING` — in two
+colourways with nothing in them but one ink: pure black `#000000` for light
+backgrounds and pure white `#FFFFFF` for dark ones. Which one goes on is decided
+per photo, from the pixels the art will actually cover:
 
   1. Alpha-weighted WCAG relative luminance of that exact rectangle — only the
      pixels the strokes land on count, not the empty space between them.
   2. Contrast against each ink; the higher one wins.
-  3. If even the winner is under MIN_CONTRAST (a mid-grey wall, where neither
-     ink separates) or the background is busier than BUSY_STD (foliage, a
-     bookcase, a venetian blind), a soft glow goes underneath — the art's own
-     alpha, blurred, in the opposite tone. A halo that follows the letterforms,
-     never a box or a band, which would wreck the photograph.
+  3. If even the winner is under MIN_CONTRAST or the background is busier than
+     BUSY_STD (foliage, a bookcase, a venetian blind), a soft glow goes
+     underneath — the art's own alpha, blurred, in the opposite tone. A halo that
+     follows the letterforms, never a box or a band, which would wreck the
+     photograph.
 
-Calibrated against the 174 archived photographs: 69% navy, 31% cream, glow on
-33%, worst contrast 3.37:1, median 6.02:1. Both thresholds were measured, not
-guessed — 3.0 would never have fired at all, and 0.10 fired on 52%. The rates
-move with LOGO_WIDTH_PCT, because a bigger mark samples a bigger patch.
+**Black and white are the extremes of the scale, so step 2 can no longer fail.**
+The two inks sit at L=0 and L=1; the worst possible background is the luminance
+where they tie, and even there the winner is 4.58:1. Every real photograph
+measures better. MIN_CONTRAST is kept as a floor for a future non-extreme
+colourway and as the number the gate page prints, but with this art the glow is
+decided by BUSY_STD alone.
 
-The gold is the fragile element: it is in both colourways and is a mid-tone, so
-in warm light it loses force while the navy or cream carries the mark. The
-alpha-weighted mean is the conservative reading and picks correctly; the glow
-threshold covers the edge cases. If the gold starts disappearing, raise
-MIN_CONTRAST — do not change the algorithm.
+Measured over 278 real photographs (the archive plus Job_0023) at
+LOGO_HEIGHT_PCT = 0.10: 75% black, 25% white, glow on 21%, worst contrast
+4.61:1, median 9.34:1. The rates move with LOGO_HEIGHT_PCT — at 0.08 the glow
+fires on 13%, at 0.14 on 28% — because a bigger mark samples a bigger patch, so
+re-measure when you change the size. It is free.
+
+What the measurement does not catch is a mark that straddles an edge: art half on
+a dark headboard and half on a light ceiling reads as a low spread over a mid
+luminance, and one half of the lockup goes quiet. That is what `glow=on` at the
+gate is for; no threshold finds it, because the patch really is uniform on
+average.
+
+The previous art was a horizontal lockup in navy and cream, both carrying a
+mid-tone gold that lost force in warm light — the fragile element the thresholds
+were built around. A single pure ink has no such part, which is why the contrast
+floor stopped mattering. Do not reintroduce a third colour into the PNGs without
+re-measuring.
 
 This reads pixels to **measure** them. It does not grade the photograph, and the
 rule against inspecting results is untouched.
@@ -57,25 +71,30 @@ from PIL import Image, ImageFilter
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_config"))
 import paths  # noqa: E402
 
-# `claro` and `escuro` name the INK, not the background. The navy one goes on a
-# light wall; the cream one goes on a dark room. Reading these backwards is the
+# `claro` and `escuro` name the INK, not the background. The black one goes on a
+# light wall; the white one goes on a dark room. Reading these backwards is the
 # obvious mistake and the reason this comment is here.
-LOGO_DARK_INK = paths.LOGOS_DIR / "wecare-hosting-horizontal-escuro.png"
-LOGO_LIGHT_INK = paths.LOGOS_DIR / "wecare-hosting-horizontal-claro.png"
+LOGO_DARK_INK = paths.LOGOS_DIR / "logo preto.png"
+LOGO_LIGHT_INK = paths.LOGOS_DIR / "logo branco.png"
 
-# Fractions of the photo's LONG EDGE, not its width. Scaling by width would give
-# a portrait photo a mark 33% smaller than a landscape one in the same gallery.
-LOGO_WIDTH_PCT = 0.144        # 295x56 px on a 2048px photo
+# Fractions of the photo's LONG EDGE, not its height. Scaling by height would
+# give a portrait photo a mark 33% bigger than a landscape one in the same
+# gallery. **By HEIGHT, because this lockup is stacked** — taller than it is
+# wide, where the old horizontal one was 5:1 the other way. Sizing a stacked mark
+# by its width is what makes it tower over the photograph.
+LOGO_HEIGHT_PCT = 0.10        # 205x166 px on a 2048px photo
 MARGIN_PCT = 0.03             # 61 px in from the top and left
 OPACITY = 0.85
 
-MIN_CONTRAST = 4.0            # below this the glow comes on (p25 of the archive)
-BUSY_STD = 0.18               # background luminance spread that counts as busy (p90)
+MIN_CONTRAST = 4.0            # below this the glow comes on — unreachable with a
+                              # pure black/white pair, which ties at 4.58:1
+BUSY_STD = 0.18               # background luminance spread that counts as busy —
+                              # p79 of 278 real photographs at this mark size
 GLOW_RADIUS_PCT = 0.35        # of the logo's height
 GLOW_OPACITY = 0.45
 
-# 4:4:4. Chroma subsampling smears the gold against the navy at these sizes,
-# and the mark is the one part of the frame with a hard colour edge.
+# 4:4:4. The mark is the one part of the frame with a hard edge, and chroma
+# subsampling drags the photo's colour across it at these sizes.
 JPEG_QUALITY = 95
 JPEG_SUBSAMPLING = 0
 
@@ -152,10 +171,17 @@ def inks() -> "tuple[Logo, Logo]":
 
 
 def geometry(width: int, height: int, art: Logo) -> "tuple[int, int, int]":
-    """(logo width, logo height, margin) in pixels for a photo this size."""
+    """(logo width, logo height, margin) in pixels for a photo this size.
+
+    Per-art, not once for the pair: the two exports do not crop to quite the same
+    bbox — the white one carries 29 px more above the pin — so their aspects
+    differ by 1.8%. Deriving the width from `dark` and painting `light` into it
+    stretched the white lockup by that much. Both marks are the same height and
+    land at the same corner; the white one is a couple of pixels narrower.
+    """
     base = max(width, height)
-    lw = round(base * LOGO_WIDTH_PCT)
-    lh = round(lw * art.im.height / art.im.width)
+    lh = round(base * LOGO_HEIGHT_PCT)
+    lw = round(lh * art.im.width / art.im.height)
     return lw, lh, round(base * MARGIN_PCT)
 
 
@@ -223,6 +249,10 @@ def run(edit: Path, out_dir: "Path | None" = None, emit=print,
     with Image.open(edit) as im:
         img = im.convert("RGB")
         W, H = img.size
+        # Measured through the black art's alpha, then rendered with whichever ink
+        # wins. The two masks differ by 0.5% of coverage, far below anything the
+        # decision turns on, and measuring twice would only invite the two answers
+        # to disagree about the same patch.
         lw, lh, m = geometry(W, H, dark)
         if m + lw > W or m + lh > H:
             fail(f"{edit.name} is {W}x{H} — too small for a {lw}x{lh} mark")
@@ -240,6 +270,7 @@ def run(edit: Path, out_dir: "Path | None" = None, emit=print,
             art, best = (dark, c_dark) if c_dark >= c_light else (light, c_light)
             why = "contraste"
 
+        lw, lh, m = geometry(W, H, art)
         auto_glow = best < MIN_CONTRAST or std > BUSY_STD
         use_glow = auto_glow if glow is None else glow
 
@@ -284,7 +315,7 @@ def main() -> None:
         sys.exit(f"error: {type(e).__name__}: {e}")
 
     print(f"fundo       L {f['L']:.3f} · desvio {f['std']:.3f}")
-    print(f"contraste   navy {f['c_dark']:.2f}:1 · creme {f['c_light']:.2f}:1"
+    print(f"contraste   preto {f['c_dark']:.2f}:1 · branco {f['c_light']:.2f}:1"
           f"  -> {f['variant']} ({f['why']})")
     if f["glow"]:
         print(f"glow        ligado — {f['reason'] or 'forçado'}")

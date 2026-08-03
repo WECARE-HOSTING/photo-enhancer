@@ -43,6 +43,7 @@ import ledger  # noqa: E402
 import marca  # noqa: E402
 import paths  # noqa: E402
 import review  # noqa: E402
+import serve  # noqa: E402
 import stage  # noqa: E402
 
 # originais/ has to be assembled before the job moves, and the code that knows
@@ -149,7 +150,7 @@ def write_record(job: Path, facts: "dict[str, dict]") -> None:
         "volta._\n\n"
         f"| | |\n|---|---|\n"
         f"| Arte | `{marca.LOGO_DARK_INK.name}` · `{marca.LOGO_LIGHT_INK.name}` |\n"
-        f"| Tamanho | {marca.LOGO_WIDTH_PCT:.1%} do lado maior · margem "
+        f"| Tamanho | {marca.LOGO_HEIGHT_PCT:.1%} do lado maior (altura) · margem "
         f"{marca.MARGIN_PCT:.0%} · opacidade {marca.OPACITY:.0%} |\n"
         f"| Glow quando | contraste < {marca.MIN_CONTRAST} ou desvio > "
         f"{marca.BUSY_STD} |\n\n" + "\n".join(rows) + "\n",
@@ -185,6 +186,40 @@ def write_review(job: Path, wall: str,
     print(f'  open      "{dest}"')
     print(f'  open -e   "{job / gate.NAME}"     # cole aqui (⌘A ⌘V ⌘S)')
     return dest
+
+
+def gate_actions(job: Path) -> "dict[str, serve.Action]":
+    """The buttons `review-marca.html` gets when a server is behind it.
+
+    Free stage, so no money warning — but `--no-serve` still rides on every
+    command that re-invokes this script, for the same reason as everywhere else.
+    """
+    me = Path(__file__).resolve()
+    job_args = ("--job", job.name, "--no-serve")
+    return {a.name: a for a in (
+        serve.Action("save_gate", f"Salvar em {gate.NAME}", writes=gate.NAME,
+                     note="grava as marcações e para aí"),
+        serve.Action("rework", "Refazer as marcadas", writes=gate.NAME,
+                     script=me, args=("--rework", *job_args), tone="bad",
+                     note="re-marca só as marcadas, honrando a tinta forçada — "
+                          "local e de graça"),
+        serve.Action("rebrand", "Re-marcar todas", script=me,
+                     args=("--rebrand", *job_args),
+                     note="refaz a marca em todas — o laço para afinar tamanho "
+                          "e posição, sem custo"),
+        serve.Action("approve", "Aprovar e arquivar", writes=gate.NAME,
+                     script=me, args=("--approve", *job_args), tone="go",
+                     note="monta originais/ e arquiva em 3 - completed/",
+                     outcome="ends_session", needs_clean=True),
+    )}
+
+
+def serve_gate(job: Path, allowed: bool, photos: int) -> None:
+    """Hand the page to a local server, and wait there until Ctrl-C."""
+    if not serve.enabled(allowed):
+        return
+    serve.run(root=job, page=review.NAME, actions=gate_actions(job),
+              title=job.name, counts={"fotos": photos})
 
 
 def approve(job: Path) -> None:
@@ -233,6 +268,11 @@ def main() -> None:
                          "honouring any forced ink")
     ap.add_argument("--approve", action="store_true",
                     help="you looked at the page and it is good — archive it")
+    ap.add_argument("--serve", action=argparse.BooleanOptionalAction, default=True,
+                    help="hand the review page to a local server so its buttons "
+                         "work, and wait there until Ctrl-C (default: yes). "
+                         "--no-serve is what every button passes to the command "
+                         "it launches, so a child never opens a second one")
     args = ap.parse_args()
 
     check_logos()
@@ -275,6 +315,7 @@ def main() -> None:
         write_review(job, "sem run")
         print("\nQuando estiver bom:\n  "
               + paths.cmd(Path(__file__), "--approve", "--job", job.name))
+        serve_gate(job, args.serve, len(photos))
         return
 
     print(f"\n{job.name} · {len(todo)} foto(s)"
@@ -316,8 +357,8 @@ def main() -> None:
     tally = {}
     for f in facts.values():
         tally[f["variant"]] = tally.get(f["variant"], 0) + 1
-    summary = (f"{len(facts)} marcadas · {tally.get('escuro', 0)} navy · "
-               f"{tally.get('claro', 0)} creme · "
+    summary = (f"{len(facts)} marcadas · {tally.get('escuro', 0)} preta · "
+               f"{tally.get('claro', 0)} branca · "
                f"{sum(1 for f in facts.values() if f['glow'])} com glow · {wall}")
     if failed:
         summary += f" · {len(failed)} falhas"
@@ -332,10 +373,12 @@ def main() -> None:
     paths.notify(f"{job.name} — marca", summary)
 
     print("\nO recorte 1:1 na página é o que importa. Se algo estiver errado:\n"
-          f"  marque, 'Copiar marcações', cole em {job.name}/{gate.NAME}, e\n  "
+          "  marque e aperte 'Refazer as marcadas' — ou, sem servidor:\n"
+          f"  'Copiar marcações', cole em {job.name}/{gate.NAME}, e\n  "
           + paths.cmd(Path(__file__), "--rework", "--job", job.name)
           + "\n\nou aprove, que arquiva o trabalho:\n  "
           + paths.cmd(Path(__file__), "--approve", "--job", job.name))
+    serve_gate(job, args.serve, len(photos))
 
 
 if __name__ == "__main__":

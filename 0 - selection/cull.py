@@ -51,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_config"))
 import ambientes  # noqa: E402
 import gate  # noqa: E402
 import ingest  # noqa: E402
+import serve  # noqa: E402
 from ambientes import fold  # noqa: E402 — one owner for accent-insensitive keys
 
 SELECTION_DIR = Path(__file__).resolve().parent
@@ -1143,9 +1144,10 @@ def write_contact_sheet(job: Path, groups: "list[RoomGroup]", prof: Profile,
     """One self-contained HTML file: proxies by relative path, click to pick.
 
     HTML rather than markdown because the work here is comparing and toggling,
-    not reading. It writes `picks.txt` through the clipboard rather than to disk
-    — a browser page cannot write into the folder, and a download that lands in
-    ~/Downloads would be worse than a copy button.
+    not reading. Opened from the disk it hands `picks.txt` back through the
+    clipboard; opened from `_config/serve.py` the same text is written for you.
+    Either way the bytes come out of `picksText()` — the page composes nothing
+    of its own, and a download landing in ~/Downloads would be worse than both.
 
     The same page also corrects a room, for the reason it exists at all: two
     bedrooms that photograph alike are told apart by looking at them side by side,
@@ -1220,7 +1222,7 @@ def write_contact_sheet(job: Path, groups: "list[RoomGroup]", prof: Profile,
     }).replace("</", "<\\/")
 
     dest = job / gate.PAGES["selection"]
-    dest.write_text(TEMPLATE.format(
+    page = TEMPLATE.format(
         title=html.escape(job.name),
         stamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
         kind=prof.kind, kind_label=html.escape(prof.label),
@@ -1233,7 +1235,17 @@ def write_contact_sheet(job: Path, groups: "list[RoomGroup]", prof: Profile,
         body="\n".join(rows),
         payload=payload,
         catalog_name=ambientes.CATALOG_NAME,
-    ), encoding="utf-8")
+        # Injected, never pasted in: this template doubles every literal CSS
+        # brace for `.format()`, and gate.py's stylesheets do not.
+        serve_css=gate.SERVE_CSS,
+        serve_js=gate.SERVE_JS,
+        srv_bar=gate.SERVE_BAR,
+    )
+    # Through a temporary: the page is rewritten while a browser may be asking
+    # for it, and half a page renders as a delivery with no photographs.
+    scratch = dest.with_suffix(".html.new")
+    scratch.write_text(page, encoding="utf-8")
+    scratch.replace(dest)
     return dest
 
 
@@ -1392,6 +1404,7 @@ button.amb {{ background:var(--warnbg); border-color:var(--warnfg); color:var(--
   font-weight:600 }}
 #n {{ font-variant-numeric:tabular-nums; font-weight:600 }}
 #hint {{ color:var(--dim); margin-left:auto; font-size:12px }}
+{serve_css}
 </style>
 
 <h1>{title}</h1>
@@ -1424,6 +1437,7 @@ you just created.</p>
   <button onclick="setAll(false)">Clear</button>
   <button onclick="fillQuota()">Fill to quota</button>
   <button class="amb" id="cat" onclick="copyCatalog()" hidden></button>
+  {srv_bar}
   <span id="over"></span>
   <span id="hint">Paste into <code>picks.txt</code> beside this file, then run
   <code>develop.py</code></span>
@@ -1477,7 +1491,10 @@ function fillQuota() {{
   tally();
 }}
 
-function copyPicks() {{
+/* The text and the copying are two functions, not one, because there are now
+   two ways out of this page: the clipboard, and the server writing the file for
+   you. Both call this, so the two routes cannot produce different bytes. */
+function picksText() {{
   // Order follows the page, which is the walkthrough order the photographer
   // numbered. develop.py keeps it, so this is also the gallery order.
   const lines = boxes().filter(b => b.checked).map(b => {{
@@ -1486,12 +1503,16 @@ function copyPicks() {{
     const note = t ? t.value.replace(/\\s+/g, ' ').trim() : '';
     return note ? b.dataset.pick + '   # ' + note : b.dataset.pick;
   }});
-  const text = '# picks.txt — uma cena por linha, na ordem da galeria.\\n'
+  return '# picks.txt — uma cena por linha, na ordem da galeria.\\n'
     + '# Um "+" junta os quadros de um bracket numa foto só.\\n'
     + '# Depois de um "#" é comentário, e vai para o registro do trabalho.\\n'
     + lines.join('\\n') + '\\n';
-  copyOut(text, document.querySelector('button.go'),
-          lines.length + ' linha(s) copiada(s) \\u2713', 'Copiar picks');
+}}
+
+function copyPicks() {{
+  const n = boxes().filter(b => b.checked).length;
+  copyOut(picksText(), document.querySelector('button.go'),
+          n + ' linha(s) copiada(s) \\u2713', 'Copiar picks');
 }}
 
 /* One clipboard helper for the whole page, with the failure branch the review
@@ -1593,7 +1614,10 @@ document.addEventListener('change', e => {{
   paint();
 }});
 
-function copyCatalog() {{
+/* Split for the same reason as picksText(): the server writes what this
+   returns, which is exactly what the clipboard would have carried. Returns
+   [text, how many rows it changed]. */
+function catalogText() {{
   // Where each file is going now. Keyed by the name as the catalogue writes it,
   // and a bracket's frames all move together because they are one photograph.
   const want = {{}};
@@ -1620,13 +1644,41 @@ function copyCatalog() {{
     changed++;
     return '|' + cells.join('|') + '|';
   }}).join('\\n');
+  return [out, changed];
+}}
 
+function copyCatalog() {{
+  const [out, changed] = catalogText();
   const b = document.getElementById('cat');
   copyOut(out, b, changed + ' linha(s) \\u2713 — cole por cima de {catalog_name}',
           b.textContent);
 }}
 
 paint();
+
+/* What the server writes, per file. Both entries call the function the
+   clipboard button already calls, so a saved file and a pasted one are the same
+   bytes — which is the cheapest correctness argument available. */
+const GATE_TEXT = {{
+  'picks.txt': picksText,
+  '{catalog_name}': () => catalogText()[0],
+}};
+
+function srvSummary(name) {{
+  const esc = s => String(s).replace(/[&<>]/g,
+    c => ({{ '&':'&amp;', '<':'&lt;', '>':'&gt;' }}[c]));
+  const w = (SRV.acts[name] || {{}}).writes;
+  if (w === '{catalog_name}') {{
+    const changed = catalogText()[1];
+    return '<p>' + changed + ' foto(s) mudam de cômodo.</p>' + (changed ? '' :
+      '<p class="danger">Nenhuma linha mudou — não há o que corrigir.</p>');
+  }}
+  const picked = boxes().filter(b => b.checked).length;
+  const over = document.getElementById('over').textContent.trim();
+  return '<p>' + picked + ' foto(s) escolhida(s)' +
+    (over ? ' — <b>' + esc(over) + '</b>' : '') + '.</p>';
+}}
+{serve_js}
 </script>
 """
 
@@ -1670,6 +1722,11 @@ def main() -> None:
                          "the delivered filename; skipping it means trusting the "
                          "photographer's labels unverified.")
     ap.add_argument("--model", help="vision model (default: see vision.py)")
+    ap.add_argument("--serve", action=argparse.BooleanOptionalAction, default=True,
+                    help="hand the contact sheet to a local server so its buttons "
+                         "work, and wait there until Ctrl-C (default: yes). "
+                         "--no-serve is what the 'Salvar e re-cortar' button "
+                         "passes, so a child never opens a second one")
     args = ap.parse_args()
 
     try:
@@ -2019,6 +2076,42 @@ def main() -> None:
     print(f"\nOpen it:  open \"{sheet}\"")
     print("Then tick, copy picks.txt into the shoot folder, and run:\n"
           f'  ./_config/.venv/bin/python "0 - selection/develop.py" "{rel(job)}"')
+    serve_gate(job, args.serve, len(scenes))
+
+
+def gate_actions(job: Path) -> "dict[str, serve.Action]":
+    """The buttons `review-selection.html` gets when a server is behind it.
+
+    Each writes the file the matching clipboard button copies, and then runs the
+    command the printed next-step names. `--no-serve` on the one that re-invokes
+    this script, so the child does not open a second server on top of this one.
+    """
+    me = Path(__file__).resolve()
+    return {a.name: a for a in (
+        serve.Action("save_picks", "Salvar picks.txt", writes="picks.txt",
+                     note="grava as escolhas e para aí"),
+        serve.Action("save_ambientes", f"Salvar {ambientes.CATALOG_NAME}",
+                     writes=ambientes.CATALOG_NAME,
+                     note="grava as correções de cômodo e para aí"),
+        # `--no-classify` is what keeps this button free. Without it cull.py
+        # asks the pictures about every photograph, one paid call each.
+        serve.Action("recull", "Salvar e re-cortar", writes=ambientes.CATALOG_NAME,
+                     script=me, args=(rel(job), "--no-classify", "--no-serve"),
+                     note="re-agrupa e re-corta a cota com os cômodos que você "
+                          "corrigiu — de graça, não pergunta nada ao modelo"),
+        serve.Action("develop", "Revelar o trabalho", writes="picks.txt",
+                     script=me.parent / "develop.py", args=(rel(job),),
+                     tone="go", outcome="ends_session",
+                     note="cria o Job_NNNN em 1 - edit/ com as fotos escolhidas"),
+    )}
+
+
+def serve_gate(job: Path, allowed: bool, scenes: int) -> None:
+    """Hand the contact sheet to a local server, and wait there until Ctrl-C."""
+    if not serve.enabled(allowed):
+        return
+    serve.run(root=job, page=gate.PAGES["selection"], actions=gate_actions(job),
+              title=job.name, counts={"cenas": scenes})
 
 
 def name_rooms(scenes: "list[Scene]", vocab: "ambientes.Vocabulary") -> int:
