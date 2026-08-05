@@ -29,10 +29,11 @@ sentences come from each photograph's `<stem>_log.md` and from `gate.md`, throug
 `retoque.history()` and `gate.passes()`; a request whose retouch failed has a row
 in the second and no block in the first, and says so on the page.
 
-    marque uma foto     ->  ela volta para a fila
-    escreva o que mudar ->  vira nota no gate.md E o prompt inteiro do retoque
-    Copiar marcações    ->  cole em gate.txt, depois batch.py --rework
-    Aprovar             ->  copia o comando que manda o trabalho adiante
+    marque uma foto        ->  ela volta para a fila
+    escreva o que mudar    ->  vira nota no gate.md E o prompt inteiro do retoque
+    Refazer as marcadas    ->  grava o gate.txt e roda --rework, aqui na página
+    Copiar marcações       ->  o mesmo texto, para você colar e rodar à mão
+    Aprovar                ->  copia o comando que manda o trabalho adiante
 
 **The box is not a note, it is the prompt.** Phase 3 sends what is written there
 and nothing else — `1 - edicao/PROMPT.md` is not read — against the image on the
@@ -40,9 +41,17 @@ and nothing else — `1 - edicao/PROMPT.md` is not read — against the image on
 phase 1 forbids: put the person back, shift the angle. A photo ticked with an
 empty box has nothing to send, and `--rework` refuses rather than guessing.
 
-Nothing here changes anything on disk. It copies text; you paste it. A page that
-could write into its own folder would be a second source of truth able to
-disagree with the files.
+**This page composes the text and decides nothing.** Where that text goes has two
+routes and one producer: your clipboard, or `_config/serve.py` when a server is
+behind it, which writes the same bytes into the same file — `SERVE_JS` calls
+`payload()`, the very function the copy button calls, so the two cannot drift.
+The one-click buttons are the served route and appear only there; opened from the
+disk the page says so in a band at the top and falls back to copy-and-paste.
+
+What this module *does* write beside the page are the two files that exist only in
+order to act on it: `gate.txt`, the paste target, and `Abrir.command`, which
+reopens the page served. Both are rewritten from scratch on every run, so neither
+can become a second source of truth able to disagree with the photographs.
 """
 
 from __future__ import annotations
@@ -269,8 +278,13 @@ def write(job: Path, pairs: "list[tuple[Path, Path]]", model: str, wall: str,
                 + ". Rode <code>batch.py</code> de novo para tentar só essas — "
                   "o trabalho não pode ser aprovado enquanto faltar uma.</p>")
 
-    approve = paths.cmd(Path(__file__).resolve().parent / "batch.py",
-                        "--approve", "--job", job.name)
+    here = Path(__file__).resolve().parent
+    approve = paths.cmd(here / "batch.py", "--approve", "--job", job.name)
+    # The command that reopens this page with its buttons alive. One string, two
+    # users: the band the page shows under `file://`, and `Abrir.command`, which is
+    # that band's one-click version — spelled once so the two cannot disagree.
+    reopen = paths.cmd(here / "batch.py", "--job", job.name, "--page-only")
+    gate.write_launcher(job, reopen)
 
     dest = job / NAME
     page = TEMPLATE.format(
@@ -288,6 +302,7 @@ def write(job: Path, pairs: "list[tuple[Path, Path]]", model: str, wall: str,
         wall=gate.esc(wall),
         stamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
         nav=nav,
+        srv_note=gate.serve_note(reopen),
         warn=warn,
         zoom=gate.zoom_div(),
         gate_file=gate.NAME,
@@ -435,6 +450,7 @@ O que você escreve <b>é o prompt inteiro</b> do reprocessamento, e ele fala da
 da <b>direita</b>: peça o que quiser, inclusive o que o prompt padrão proíbe.
 Uma foto marcada sem texto não roda.<br>
 {nav}</p>
+{srv_note}
 {warn}
 
 {body}

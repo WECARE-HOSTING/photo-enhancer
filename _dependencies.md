@@ -75,7 +75,11 @@ the restructure; three of them were in `organize.py` and died with it.
 | | |
 |---|---|
 | Depended on by | both `review.py`, both `batch.py`, `develop.py`, `cull.py` |
-| Owns | the palette, the shared page CSS/JS, `copy()`, the `gate.txt` format, `gate.md` and its reader (`passes()`), the three page names, and `SERVE_CSS`/`SERVE_JS` — the client half of `serve.py` |
+| Owns | the palette, the shared page CSS/JS, `copy()`, the `gate.txt` format, `picks.txt`'s too (`picks()`), `gate.md` and its reader (`passes()`), the three page names, `LAUNCHER`/`write_launcher()`/`serve_note()`, and `SERVE_CSS`/`SERVE_JS` — the client half of `serve.py` |
+| **The band and the launcher are one pair** | `serve_note()` prints the command, `write_launcher()` writes the file that runs it, and the caller passes **one** `paths.cmd()` string to both. Split them across two modules and the page could name a file nobody wrote, or print a command that file does not run — the second source of truth this project is built to avoid |
+| `#srvoff` ships **hidden**, and `srvProbe()` unhides it | Not the reverse. A served page would otherwise flash a warning it is about to take away. And `#srvoff[hidden] { display:none }` is spelled out because the `display:flex` rule outranks the `hidden` attribute's UA default |
+| Why `gate.py` imports `paths.py` | For `VENV_PY` in the launcher, and it is this module's only project dependency. The alternative — three callers passing the interpreter in — is three chances to hardcode a literal, which is the thing `paths.py` exists to abolish |
+| `picks()` never exits | Two callers want different things from a missing file: `develop.read_picks()` wraps it with the `sys.exit` a hand-off needs, while `cull.py` calls it to pre-tick the sheet, where a shoot nobody has ticked yet is the normal case |
 | **The wire format** | `NAME  # why` sends a photo back; `+NAME  # note` keeps it and records the note. That is the old `rework.txt` grammar plus two characters, so muscle memory survives. **A trailing `#` is a comment** — see the live bugs below |
 | Options ride in the comment | `variant=claro`, `glow=on`. Applied to that run only. **Never persisted**: the resulting `_final.jpg` on disk *is* the persistence, and a file storing the override would be a second source of truth able to disagree with the image |
 | CSS/JS are injected via `.format()` | So they no longer need doubled braces. `review.py`'s stylesheet used to be written `{{ … }}` throughout for that reason alone |
@@ -180,7 +184,9 @@ rooms are called; `RULES.md` is what you edit to change which photos get chosen.
 | `CROP_FACTORS` is a stub by design | An unknown body reports the 35mm equivalent as unknown rather than guessing |
 | OpenCV version sensitivity | `HoughLinesP` returns `(N,1,4)` in v4 and `(N,4)` in v5; `vertical_geometry()` reshapes for both |
 | Clipboard | `copyOut()` is shared and **has a rejection branch**. It did not before: a blocked clipboard on the contact sheet did nothing at all and said nothing, which is worse than a broken button because you paste the previous clipboard and never notice |
-| Free to test | `cull.py --no-classify`, `--profile-only`, `ambientes.py` on a label, `vision.py --room X` |
+| **`picks.txt` outranks the quota and the vision pass** | `apply_picks()` runs last for that reason, and it honours the file's *noes* too — a photograph the file does not name is unticked even if the quota had taken it. It is the only one of the three a human wrote, and the only one `develop.py` reads; a sheet that disagreed with it would be a second source of truth. Before this, redrawing the sheet to fix one room's name cost you the whole selection |
+| `--page-only` implies `--no-classify` and drops `--vision` | Not a suggestion. This stage bills one call per photograph, and `Abrir.command` is a double-click: a shortcut able to re-ask the model would bill a whole delivery for a gesture. Measured at ~1.5 s on an already-proxied shoot |
+| Free to test | `cull.py --no-classify`, `--page-only`, `--profile-only`, `ambientes.py` on a label, `vision.py --room X` |
 
 ## `0 - selection/develop.py`
 
@@ -189,6 +195,7 @@ rooms are called; `RULES.md` is what you edit to change which photos get chosen.
 | Depends on | `picks.txt`, `ambientes.md`, `source/`, `stage.new_job_name()`, `1 - edit/` existing |
 | Owns | the job number, `job.md`, `originais.md`, the shoot's `gate.md`, `developed/` |
 | Refuses to run without `ambientes.md` | The names come from there and are not re-derived |
+| The `picks.txt` grammar lives in `gate.picks()` | `read_picks()` is the pair of exits around it — no file, or no picks in it. `cull.py` calls the same parser to pre-tick the sheet, so the sheet cannot read the picks differently from the hand-off that acts on them |
 | **`--force` refuses once results exist** | It used to `rmtree` the destination. With the destination now a live `Job_NNNN/`, that would delete paid `_edit.jpg` files, the logs saying which prompt made them, and the gate record. It now refuses if any `*_edit*.jpg` is present and tells you to delete the folder by hand |
 | Deliberately does not | Re-apply the quota, skip a flagged frame, or reconsider a pick. **The human's list is final** |
 | Output size | 2400px, for the picks and the unpicked alike |
@@ -314,6 +321,7 @@ Siblings. **A fix to one should be checked against the other.**
 | Stage 1's third pane | Appears only when a `<stem>_edit_r*.jpg` exists: `original / edição anterior / retoque`, keys `a` / `c` / `b`. The captions changed with it — "antes"/"depois" is wrong the moment there are three, and all three are a before and an after of something |
 | Which shelved file the third pane shows | The newest on **disk**, not the newest the log names. The log outlives the file (`--approve` deletes them via `drop_shelved`), and the disk is what can actually be displayed |
 | All three pages write through a temporary | `.html.new` then `replace()`. A page is rewritten while a browser may be asking for it, and half a page renders as a job with no photographs rather than as an error |
+| **They write two files, not one** | The page, and `Abrir.command` beside it — the reopen shortcut, whose command they also bake into the page's own `file://` band. `--approve` deletes both as scratch, in the same tuple as `gate.txt`, so a job that has moved cannot be reopened from the folder it left |
 
 ## `_config/serve.py`
 
@@ -328,6 +336,8 @@ Siblings. **A fix to one should be checked against the other.**
 | `PYTHONUNBUFFERED=1` on the child | Load-bearing. `batch.py` prints one block per photo, and without it the pipe holds 8 KB and the page is silent for four minutes and then says everything at once |
 | **Two guards against a second server** | `--no-serve` on every action that re-invokes its own script, **and** `PHOTO_ENHANCER_CHILD` in the child's environment, which makes `enabled()` refuse whatever the flag says. One forgotten argument in a registry row would otherwise mean a second port, a second tab, and a parent blocked forever on a pipe that never closes |
 | `enabled()` also refuses without a tty | An agent, a cron job, a pipe — nobody there can see the URL or press Ctrl-C, so serving is a hang, not a feature. **Do not remove this check** |
+| What a `file://` page says now | `srvProbe()`'s first line still returns before any fetch — it returns *through* `srvOffline()`, which unhides a band already in the HTML. The other two early returns (`!r.ok`, network error) stay silent on purpose: they mean "http, but not this server", and "aberta do disco" would be false there |
+| How a human gets back to a served page | `Abrir.command`, written beside every page by the writer that wrote it, running that stage's `--page-only`. A browser cannot start this module from inside a `file://` page — the sandbox runs nothing on the Mac — so the band names the file instead of linking to it, and a link would only download it |
 | Who redraws the page | The child, exactly as it does from the terminal — `--rework` already ends by calling `write_review()`. This module never learns to build a page; on exit 0 it tells the browser to reload and serves what the child wrote |
 | A failed child does not reload | Its output is the thing to read, and reloading would wipe it off the screen. The generation does not move either, so the page stays valid |
 | The tab can close mid-run | The child belongs to the server, not the browser. Every line is appended to the run's buffer **and printed to the server's own stdout**, so the terminal stays a complete log; reopening the URL reconnects and replays |

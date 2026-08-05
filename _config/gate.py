@@ -33,6 +33,11 @@ routes exist on every page and produce the same bytes: the producing function is
 the same one either way, and `SERVE_JS` calls it rather than composing anything
 of its own. See "the server, if any", below.
 
+The one-click route exists only on the served page, so a page opened from the disk
+now **says so** — a band at the top naming `Abrir.command`, the double-clickable
+launcher this module writes beside every page, which reopens it served. The band
+and the launcher are one pair on purpose: see `serve_note()`.
+
     SALA_01_0002        # sofá saiu com textura plástica, refazer
     +COZINHA_01_0001    # bancada clareou mais do que eu queria, mas passa
 
@@ -57,13 +62,20 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import paths  # noqa: E402  — the only speller of a stage command, for the launcher
+
 NAME = "gate.txt"
 RECORD = "gate.md"
+PICKS = "picks.txt"
+LAUNCHER = "Abrir.command"
 
 # The three pages, named in one place. Each stage's own writer holds the layout;
 # this is only so a script can name a sibling stage's page in a message without
@@ -135,6 +147,38 @@ def parse(path: Path) -> "tuple[list[Mark], list[str]]":
             note = re.sub(r"\s{2,}", " ", note).strip(" ·,;.")
         marks.append(Mark(key=key, back=back, comment=note, opts=opts))
     return marks, unknown
+
+
+def picks(shoot: Path) -> "tuple[list[list[str]], dict[str, str]]":
+    """Read stage 0's `picks.txt` into (scenes, note by first frame).
+
+    The grammar `parse()` cannot serve: a scene is one or more source filenames
+    joined by `+` (a bracket collapsing into one photograph), and the statement is
+    positive — these 63 of 307 are in. A trailing `#` is a comment, not part of a
+    filename; without that split, one sentence on the sheet used to make
+    `develop.resolve()` fail to find the file and kill the whole hand-off.
+
+    **Missing or empty is not an error here.** `develop.read_picks()` wraps this
+    with the `sys.exit` it needs, because a hand-off with no picks has nothing to
+    do; `cull.py` calls it to pre-tick the sheet and a shoot nobody has ticked yet
+    is the normal case.
+    """
+    path = Path(shoot) / PICKS
+    if not path.exists():
+        return [], {}
+    scenes: "list[list[str]]" = []
+    notes: "dict[str, str]" = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        body, _, note = line.partition("#")
+        frames = [f.strip() for f in body.split("+") if f.strip()]
+        if frames:
+            scenes.append(frames)
+            if note.strip():
+                notes[frames[0]] = note.strip()
+    return scenes, notes
 
 
 def stub(page: str, job: str) -> str:
@@ -532,7 +576,58 @@ dialog#srvask::backdrop { background:#0009; backdrop-filter:blur(3px) }
   line-height:1.45; white-space:pre-wrap; word-break:break-word;
   font-family:ui-monospace, SFMono-Regular, Menlo, monospace }
 #srvout.bad { border-color:var(--rej, var(--flag)) }
+/* The band a page opened from the disk shows instead of an empty #srvbar. It
+   ships hidden, and `#srvoff[hidden]` has to be spelled out: a `display:flex`
+   rule outranks the hidden attribute's UA stylesheet, and the band would then be
+   on in every served page, permanently. */
+#srvoff { margin:0 0 1.2rem; padding:.7rem .85rem; border-radius:8px;
+  background:var(--warnbg); color:var(--warnfg); font-size:12.5px;
+  display:flex; flex-wrap:wrap; gap:.45rem .7rem; align-items:center }
+#srvoff[hidden] { display:none }
+#srvoff .how { flex:1 1 100% }
+#srvoff code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size:11.5px; padding:.3rem .5rem; border-radius:6px; max-width:100%;
+  background:color-mix(in srgb, var(--warnfg) 13%, transparent);
+  overflow-x:auto; white-space:pre }
+#srvoff button { font:inherit; font-size:12px; padding:.28rem .7rem;
+  border-radius:6px; cursor:pointer; border:1px solid var(--warnfg);
+  background:transparent; color:var(--warnfg) }
+#srvcmdhint { font-size:11.5px }
 """
+
+
+# ------------------------------------------------- when there is no server
+#
+# The first line of `srvProbe()` is still the entire `file://` fallback — no
+# fetch, no console error, no buttons — but it used to return in *silence*,
+# leaving `#srvbar` empty with nothing to say why, and the barra showing only
+# 'Copiar marcações' in a flow that no longer needs copying at all.
+#
+# These two are deliberately one pair: `serve_note()` is the band that names
+# `LAUNCHER`, `write_launcher()` is what puts that file there. Both are handed the
+# same command string by the caller, so the band cannot name a file nobody wrote,
+# nor print a command that file does not run.
+
+def serve_note(command: str) -> str:
+    """The band a page shows when it was opened from the disk.
+
+    Ships hidden and is revealed by `srvOffline()`, never the other way round: a
+    served page must not flash a warning it is about to take away. The command is
+    baked into the HTML at write time because under `file://` there is nothing to
+    ask — the `actions` registry only exists on the other route.
+    """
+    return (
+        '<div id="srvoff" hidden>'
+        '<b>Esta página foi aberta do disco.</b> Por isso os botões de um clique '
+        '(«Refazer as marcadas», «Aprovar…») não estão aqui: eles falam com o '
+        'servidor que o comando abaixo levanta. Os botões de copiar continuam '
+        'funcionando como sempre — copie, cole no arquivo ao lado, rode o comando.'
+        f'<span class="how">De um clique: <b>{esc(LAUNCHER)}</b>, nesta mesma '
+        'pasta — duplo clique no Finder e esta página reabre servida, com os '
+        'botões.</span>'
+        f'<code id="srvcmd">{esc(command)}</code>'
+        '<button type="button" onclick="srvCopyCmd()">Copiar o comando</button>'
+        '<span id="srvcmdhint"></span></div>')
 
 # The page supplies GATE_TEXT: {filename it writes -> function returning its
 # bytes}. Those functions are the ones the clipboard buttons already call, so
@@ -545,6 +640,34 @@ const SRV = { on:false, gen:0, tok:'', acts:{}, run:null, busy:false };
 // would only exist on one of the two pages.
 function srvUndirty() { if (typeof dirty !== 'undefined') dirty = false; }
 
+// Under file:// there is no bar to build and no state to fetch, so the page
+// explains itself instead of looking broken. It only unhides text that is already
+// in the HTML, so a page with no JS at all is no worse off than before.
+function srvOffline() {
+  const el = document.getElementById('srvoff');
+  if (el) el.hidden = false;
+}
+
+function srvCopyCmd() {
+  const code = document.getElementById('srvcmd');
+  const hint = document.getElementById('srvcmdhint');
+  if (!code) return;
+  // With a trailing newline, like copyApprove()'s: pasted into Terminal it runs,
+  // instead of sitting there waiting for a return nobody realises is missing.
+  navigator.clipboard.writeText(code.textContent + '\\n').then(
+    () => { hint.textContent = 'Comando copiado — cole no terminal ✓'; },
+    () => {
+      // The same rejection copy() has always handled, with the fallback that
+      // needs no permission at all: select it, and ⌘C works.
+      const r = document.createRange();
+      r.selectNodeContents(code);
+      const s = getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      hint.textContent = 'Clipboard bloqueado — o comando está selecionado, ⌘C';
+    });
+}
+
 function srvHead(extra) {
   const h = { 'Content-Type':'application/json', 'X-Gate-Token':SRV.tok };
   if (extra !== false) h['X-Gate-Gen'] = String(SRV.gen);
@@ -552,12 +675,16 @@ function srvHead(extra) {
 }
 
 async function srvProbe() {
-  // The whole file:// fallback. No fetch, no console error, no buttons — the
-  // page behaves exactly as it did before this module existed.
-  if (!location.protocol.startsWith('http')) return;
+  // Still the whole file:// fallback. No fetch, no console error, no buttons —
+  // the one thing it does now is say so, which is what stops an empty barra from
+  // reading as a broken page.
+  if (!location.protocol.startsWith('http')) return srvOffline();
   SRV.tok = new URLSearchParams(location.search).get('t') || '';
   let s;
   try {
+    // These two stay silent on purpose. They mean "served over http, but not by
+    // *this* server" — a plain python -m http.server, or a tab left open on a
+    // dead session — and the band's "aberta do disco" would be a lie there.
     const r = await fetch('/_gate/state');
     if (!r.ok) return;
     s = await r.json();
@@ -768,3 +895,72 @@ def zoom_div() -> str:
 def header_line(page: str, job: str) -> str:
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return f"# {NAME} — {job} · copiado de {page} em {stamp}"
+
+
+# ---------------------------------------------------------------- the launcher
+
+def launcher_body(command: str) -> str:
+    """The `Abrir.command` script, verbatim.
+
+    `${0:A:h:h:h}` is zsh for "this file's absolute path, up three": the job or
+    shoot folder, its stage folder, the project root. Deriving the root instead of
+    baking it means the file survives the whole project being moved or renamed,
+    and keeps the command inside it the *relative* one you would type from the
+    root — which is `paths.cmd()`, the only speller of a stage command here.
+
+    A double-click has no terminal standing by to explain itself afterwards, so
+    the one failure worth catching — this file copied elsewhere, or the folder
+    dragged out of the project — says so on screen and waits for a keypress before
+    the window closes. That message carries the command inside a **quoted**
+    heredoc: `paths.cmd()` returns double quotes around the script path and
+    `shlex.quote` can add single ones (a shoot named `Casa d'Água`), and
+    `<<'ABRIR-FIM'` is the one construct where neither is parsed. A `print` or an
+    `echo` here breaks on the first quote.
+
+    `exec` makes Python *be* the process, so the Terminal's Ctrl-C lands straight
+    in `serve_forever()`'s KeyboardInterrupt with no shell left over to confuse
+    the exit code.
+    """
+    return f"""#!/bin/zsh
+# {LAUNCHER} — escrito ao lado da página de revisão, toda vez que ela é escrita.
+# Duplo clique no Finder: abre um Terminal na raiz do projeto, redesenha esta
+# página com o que já está no disco, serve por http e abre o navegador — que é o
+# que faz os botões de um clique dela funcionarem. Ctrl-C ali encerra.
+#
+# Gerado. Qualquer edição aqui se perde na próxima vez.
+cd "${{0:A:h:h:h}}" || exit 1
+if [ ! -x "{paths.VENV_PY}" ]; then
+  cat >&2 <<'ABRIR-FIM'
+error: este atalho não achou o python do projeto a partir da pasta acima.
+       Ele só vale de dentro do projeto. Se você copiou este arquivo para outro
+       lugar, ou arrastou a pasta para fora, rode na raiz do projeto:
+
+         {command}
+
+ABRIR-FIM
+  printf 'Enter para fechar '
+  read -r _
+  exit 1
+fi
+exec {command}
+"""
+
+
+def write_launcher(folder: Path, command: str) -> Path:
+    """Write `Abrir.command` beside the page, executable. Returns its path.
+
+    Through a temporary and `os.replace`, like every other file this pipeline
+    writes: a double-click that caught a half-written script would run half a
+    command. The `chmod` happens on the temporary, *before* the rename, so the
+    file is never visible without its executable bit — Finder offers to open a
+    non-executable `.command` in TextEdit, which is a confusing dead end.
+    """
+    dest = Path(folder) / LAUNCHER
+    scratch = dest.with_name(dest.name + ".new")
+    try:
+        scratch.write_text(launcher_body(command), encoding="utf-8")
+        scratch.chmod(0o755)
+        os.replace(scratch, dest)
+    finally:
+        scratch.unlink(missing_ok=True)
+    return dest

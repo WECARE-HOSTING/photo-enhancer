@@ -80,12 +80,14 @@ edits a retouch replaced, kept so you can go back, and discarded on approval.
 | One photo is filed under the wrong room | change it under the photo in `review-selection.html`, then 'Salvar e re-cortar' (free). Without a server: "Copy ambientes.md", paste, re-run `cull.py --no-classify` | `0 - selection/CONTEXT.md` → "The contact sheet is the gate" |
 | Two rooms of the same kind came back as one | `cull.py` asks the pictures — see `split_ambientes`. When it gets it wrong: `+ novo QUARTO` in `review-selection.html`, or the `Sala` column of `ambientes.md`. Your number always wins | same |
 | A room name is right but the description under it is not | the two are different passes and both are shown on the tile now — `viu` is the classifier, `escolheu` is the picker. A red mark means the picker says the photo is not of that room at all | same |
+| Redrawing the sheet used to lose my ticks | it doesn't any more — `cull.py` reads `picks.txt` back and the file outranks both the quota and the vision pass, its noes included. Nothing to do; the page says where the ticks came from | `0 - selection/CONTEXT.md` |
 | See what a room label maps to, free | `0 - selection/ambientes.py "Sala Cobertura"` | same |
 | Turn the picks into a job | `0 - selection/develop.py <shoot>` | same → "The handoff" |
 | Run a job through the API | `1 - edit/batch.py` | `1 - edit/CONTEXT.md` → "Running it" |
 | Judge the edits, send some back | the job's `review-edit.html` → 'Refazer as marcadas'. Without a server: → `gate.txt` → `batch.py --rework` | same → "The gate" |
 | Check a retouch against what you asked for | the same page: three panes (`a` / `c` / `b`) and the sentence under the photo | same → "The gate" |
-| The page's buttons do nothing, or aren't there | it was opened from the disk, not from the server — re-run the stage command, or use the clipboard buttons beside them | `_config/serve.py` |
+| The page's buttons do nothing, or aren't there | it was opened from the disk — the page now says so in a band at the top. Double-click `Abrir.command` in that same folder, or copy the command off the band; the clipboard buttons work either way | `_config/serve.py` |
+| Reopen a page with its buttons alive, without typing | `Abrir.command`, beside the page. Free on all three stages — it is `--page-only`, which redraws and serves and nothing else | same |
 | Change how outputs look, for every photo | `1 - edit/1 - edicao/PROMPT.md` | that folder's `CONTEXT.md` → "Editing PROMPT.md" |
 | Fix one photo, in your own words | the box under it in `review-edit.html` — that text is the whole prompt | `1 - edit/2 - retoque/CONTEXT.md` |
 | Change what the retouch tells the model about the two images | `1 - edit/2 - retoque/PROMPT.md` | same |
@@ -136,8 +138,20 @@ that started it stays a full log, so closing the tab loses nothing.
 
 Every command is still exactly as typeable as before, and the page's clipboard
 buttons still work — open any page from the disk (`file://`) and it behaves as
-it always did: copy, paste into the file, run the command. `--no-serve` on any
-of the three commands skips the server entirely.
+it always did: copy, paste into the file, run the command. It now also says so, in
+a band at the top, with the command in a copy button. `--no-serve` on any of the
+three commands skips the server entirely.
+
+**`Abrir.command`, beside every page, is the way back to a served one.** Each
+stage writes it whenever it writes its page; a double-click in Finder opens a
+Terminal at the project root and runs that stage's `--page-only` — redraw the page
+from what is on disk, serve it, open the browser. **`--page-only` never spends and
+never processes**, which is the whole reason it exists: a plain `batch.py` run
+would retry every photo with no `_edit`, right when you type it and a surprise
+when you click it. `--approve` deletes the launcher along with the page, so a job
+that has moved on cannot be reopened from the folder it left. A browser cannot
+launch it from inside the page — a `file://` page runs nothing on your Mac — so
+the band names the file rather than linking to it.
 
 ```bash
 ./_config/.venv/bin/python "0 - selection/develop.py" "0 - selection/<shoot>"  # -> 1 - edit/Job_NNNN

@@ -136,8 +136,13 @@ def write(job: Path, trios: "list[tuple[Path, Path, dict]]", wall: str,
 
     glows = sum(1 for _, _, f in trios if f["glow"])
     brancas = sum(1 for _, _, f in trios if f["variant"] == "claro")
-    approve = paths.cmd(Path(__file__).resolve().parent / "batch.py",
-                        "--approve", "--job", job.name)
+    here = Path(__file__).resolve().parent
+    approve = paths.cmd(here / "batch.py", "--approve", "--job", job.name)
+    # One string, two users: the band this page shows under `file://`, and
+    # `Abrir.command` beside it, which is that band's one-click version. See
+    # `gate.serve_note`.
+    reopen = paths.cmd(here / "batch.py", "--job", job.name, "--page-only")
+    gate.write_launcher(job, reopen)
 
     dest = job / NAME
     page = TEMPLATE.format(
@@ -153,6 +158,7 @@ def write(job: Path, trios: "list[tuple[Path, Path, dict]]", wall: str,
         wall=gate.esc(wall),
         stamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
         nav=nav,
+        srv_note=gate.serve_note(reopen),
         warn=warn,
         zoom=gate.zoom_div(),
         gate_file=gate.NAME,
@@ -217,6 +223,7 @@ O recorte da esquerda é <b>1:1, pixels reais</b> — é ali que se vê se a mar
 some. Marque a foto para refazê-la e, se quiser, force a tinta. Remarcar é
 grátis: não há chamada de API neste estágio.<br>
 {nav}</p>
+{srv_note}
 {warn}
 
 {body}

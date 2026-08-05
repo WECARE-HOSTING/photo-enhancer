@@ -1,10 +1,10 @@
 Professional real estate listing enhancement: edit this exact photograph — same space, same layout, same vantage, same time of day, never recreate the scene. Every object in the result already exists in the source photograph. Bare surfaces stay bare.
 
-Light: balance exposure like a bracketed HDR merge — recover burnt highlights on walls, floors, and fixtures, lift shadows, keep blacks rich and neutral white balance.
+Light: balance the interior's exposure like a bracketed HDR merge of the room itself — recover burnt highlights on walls, floors, and fixtures, lift shadows, keep blacks rich and neutral white balance. Window and door glass is outside that recovery and follows its own rule below.
 
 Planting already present renders green and healthy, same layout.
 
-Surfaces' Reflections: identify reflections on any surface and remote it, keeping the original surfaces shiny.
+Surfaces' Reflections: identify reflections on any opaque surface and remote it, keeping the original surfaces shiny. Window and door glass is the exception: the glass keeps every reflection the source already shows on it, unchanged.
 
 Reframe for composition from the same vantage, keeping everything the source shows. Widened margins continue the surfaces already meeting that edge, in the same material.
 
@@ -24,7 +24,7 @@ Curtains pressed
 
 TVs and projectors already visible in the source display a Netflix home screen. Dark panels and unlit walls stay flat painted surfaces.
 
-Window views: recover the overexposure. Where the source shows no detail, stays soft, bright and abstract.
+Window views: whatever the glass shows in the source is all the glass ever shows. A shape already photographed through a pane keeps its own outline, position and size, and may only have its colour cast and haze cleaned — it never becomes sharper, more detailed or larger than the source rendered it. A pane the source blew out keeps its flat bright wash, with no shape resolving inside it. No sky, cloud, sun, horizon, tree, garden, lawn, hill, mountain, beach, ocean, pool, street, car, building or city view is drawn beyond a pane where the source did not already photograph it. Any doubt about what lies outside a window resolves to that flat bright wash, never to a view. Frames, mullions, glazing bars and sills stay straight, rectangular and sharp.
 
 Documents: any document, page, contract, form or certificate visible in the source stays exactly where it is, same size, same angle, same hand on it. Its printed and handwritten text renders as a soft out-of-focus blur — the shape of lines and paragraphs with no readable letter, word, name or number anywhere, as if that page alone were photographed at shallow depth of field. Letterheads, stamps, logos and signatures blur the same way. Everything else in the photograph stays tack sharp.
 

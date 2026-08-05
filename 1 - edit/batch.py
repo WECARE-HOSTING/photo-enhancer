@@ -250,7 +250,11 @@ def approve(job: Path) -> None:
     # unlinked the page and the rework list and *then* archived — destroying the
     # rejection history at the exact moment it became permanent.
     fold_gate(job, marks, approved=len(pairs))
-    for scratch in (job / review.NAME, job / gate.NAME):
+    # `Abrir.command` goes with the page it reopens — it is scratch of exactly the
+    # same kind, and left behind it would point a double-click at a stage the job
+    # has already left. The next stage's batch.py writes page and launcher together
+    # on its first run, which is the command printed at the bottom of this one.
+    for scratch in (job / review.NAME, job / gate.NAME, job / gate.LAUNCHER):
         if scratch.exists():
             scratch.unlink()
     # The shelved retouch versions go too. They exist so a human can choose
@@ -282,6 +286,10 @@ def main() -> None:
                          "it edits the result, not the source")
     ap.add_argument("--approve", action="store_true",
                     help="you looked at the page and it is good — move the job on")
+    ap.add_argument("--page-only", action="store_true",
+                    help=f"redraw {review.NAME} from what is already on disk and "
+                         "serve it, without sending anything. What "
+                         f"{gate.LAUNCHER} runs")
     ap.add_argument("--serve", action=argparse.BooleanOptionalAction, default=True,
                     help="hand the review page to a local server so its buttons "
                          "work, and wait there until Ctrl-C (default: yes). "
@@ -297,6 +305,18 @@ def main() -> None:
 
     if args.approve:
         approve(job)
+        return
+
+    # What `Abrir.command` runs, and the reason that shortcut exists at all: it
+    # redraws the page from what is on disk and serves it, looking at no photo and
+    # sending nothing. A plain run would retry every photo that has no `_edit` —
+    # correct when you type it, a surprise when you double-click it, and the fal.ai
+    # bill does not care which of the two it was.
+    if args.page_only:
+        write_review(job, args.model, "sem run")
+        print("\nQuando estiver bom:\n  "
+              + paths.cmd(Path(__file__), "--approve", "--job", job.name))
+        serve_gate(job, args.serve, len(all_photos))
         return
 
     instructions: "dict[str, str]" = {}

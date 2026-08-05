@@ -304,6 +304,20 @@ Things to keep in mind when you edit the prompt itself:
   A half-visible tapestry, chair leg, or cabinet coming back still half-visible
   is correct. Restoring it would mean generating room that was never
   photographed, which is the one thing this project forbids.
+- **What a window shows is fixed content (2026-08-04).** The model kept painting
+  sky, trees and gardens into panes the source never photographed — the project's
+  one rule broken, and on the attribute that sells a property. `PROMPT.md` now
+  caps it: what the glass shows in the source is all it ever shows, a shape
+  behind a pane may only lose its colour cast and haze, a blown-out pane keeps
+  its flat bright wash, and **doubt resolves to that wash, never to a view** —
+  the same stated-fallback shape the frame margin needed. The ban carries its
+  nouns (sky, cloud, sun, horizon, tree, garden, lawn, hill, mountain, beach,
+  ocean, pool, street, car, building, city view), because a nounless ban has
+  never held here. Two other lines were the actual doors in: `bracketed HDR
+  merge` is *the* technique that reveals a window view, so it is now scoped to
+  the interior, and the reflection rule is scoped to opaque surfaces — stripping
+  the reflection off glass opens a void the model fills with landscape. If you
+  ever loosen one of the three, expect the invented view back.
 - **Planting is settled as intended behavior (2026-07-26), so don't "fix" it.**
   Planting already in frame renders green and healthy, bounded by layout —
   nothing planted that wasn't there, and one ground surface never becomes

@@ -51,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_config"))
 import ambientes  # noqa: E402
 import gate  # noqa: E402
 import ingest  # noqa: E402
+import paths  # noqa: E402
 import serve  # noqa: E402
 from ambientes import fold  # noqa: E402 — one owner for accent-insensitive keys
 
@@ -392,6 +393,11 @@ class Scene:
     # into `selection.md`.
     chosen: bool = False
     reason: str = ""
+
+    # What you wrote under this photograph on the sheet, read back out of
+    # `picks.txt` so reopening the page does not lose it. Yours, never a model's —
+    # `reason` above is the picker's sentence and they are shown differently.
+    pick_note: str = ""
     rejected_why: str = ""
     purpose: "int | None" = None
     staging: "int | None" = None
@@ -1221,6 +1227,13 @@ def write_contact_sheet(job: Path, groups: "list[RoomGroup]", prof: Profile,
         "slugs": list(vocab.order) if vocab else [],
     }).replace("</", "<\\/")
 
+    # The command that reopens this sheet with its buttons alive, and the one-click
+    # version of it beside the page. `--page-only` is what keeps a double-click
+    # free: without it a reopen would ask the model about every photograph again,
+    # one paid call each. See `gate.serve_note`.
+    reopen = paths.cmd(SELECTION_DIR / "cull.py", rel(job), "--page-only")
+    gate.write_launcher(job, reopen)
+
     dest = job / gate.PAGES["selection"]
     page = TEMPLATE.format(
         title=html.escape(job.name),
@@ -1240,6 +1253,7 @@ def write_contact_sheet(job: Path, groups: "list[RoomGroup]", prof: Profile,
         serve_css=gate.SERVE_CSS,
         serve_js=gate.SERVE_JS,
         srv_bar=gate.SERVE_BAR,
+        srv_note=gate.serve_note(reopen),
     )
     # Through a temporary: the page is rewritten while a browser may be asking
     # for it, and half a page renders as a delivery with no photographs.
@@ -1312,7 +1326,7 @@ def tile(job: Path, s: Scene, g: RoomGroup, best: bool, siblings: int) -> str:
         # inside a <label> toggles that label's checkbox when clicked, so typing
         # here would silently pick or unpick the photograph.
         f'<textarea class="note" rows="1" data-note="{html.escape(names)}" '
-        f'placeholder="por quê"></textarea>'
+        f'placeholder="por quê">{html.escape(s.pick_note)}</textarea>'
         f'</div>')
 
 
@@ -1427,6 +1441,7 @@ its own <code>QUARTO_02_NNNN.jpg</code>. Then copy
 <code>{catalog_name}</code>, paste it over the file beside this one, and re-run
 <code>cull.py --no-classify</code> — free, and it re-cuts the quota for the rooms
 you just created.</p>
+{srv_note}
 {note}
 
 {body}
@@ -1722,12 +1737,24 @@ def main() -> None:
                          "the delivered filename; skipping it means trusting the "
                          "photographer's labels unverified.")
     ap.add_argument("--model", help="vision model (default: see vision.py)")
+    ap.add_argument("--page-only", action="store_true",
+                    help=f"redraw the sheet and serve it, asking no model anything. "
+                         f"Implies --no-classify and drops --vision. What "
+                         f"{gate.LAUNCHER} runs")
     ap.add_argument("--serve", action=argparse.BooleanOptionalAction, default=True,
                     help="hand the contact sheet to a local server so its buttons "
                          "work, and wait there until Ctrl-C (default: yes). "
                          "--no-serve is what the 'Salvar e re-cortar' button "
                          "passes, so a child never opens a second one")
     args = ap.parse_args()
+
+    # What `Abrir.command` runs. Neither of these is a suggestion: stage 0 spends
+    # money one photograph at a time, so a double-click that re-asked the model
+    # about every photograph would bill a whole delivery for a gesture. This flag
+    # exists so the shortcut can only ever redraw and serve.
+    if args.page_only:
+        args.no_classify = True
+        args.vision = False
 
     try:
         rules = load_rules()
@@ -1986,8 +2013,26 @@ def main() -> None:
     if args.vision and prof.curate:
         vision_note = run_vision(job, groups, rules, args.model, args.workers)
 
+    # Last, so it outranks the quota above and the vision pass just now. See
+    # `apply_picks`: of the three things that can tick a photograph, this is the
+    # only one a human wrote, and the only one develop.py will read.
+    restored = apply_picks(scenes, job)
+    picks_note = ""
+    if restored:
+        print(f"\npicks       {restored} marcação(ões) restaurada(s) de "
+              f"{gate.PICKS} — o arquivo manda")
+        picks_note = (f"As <b>{restored} marcação(ões)</b> vêm do "
+                      f"<code>{gate.PICKS}</code> que já estava aqui, não de uma "
+                      "nova conta — o arquivo é a resposta. Mude o que quiser e "
+                      "copie de novo.")
+
     note = ""
-    if not prof.curate:
+    # First branch, because the other three would all be false: nothing here was
+    # decided by the quota or by a model, and "nothing is pre-ticked" in
+    # particular would be flatly wrong with the ticks visible on the page.
+    if picks_note:
+        note = picks_note
+    elif not prof.curate:
         note = ("This delivery was already curated by someone, so nothing was cut and "
                 "everything is ticked. Untick anything you disagree with.")
     elif vision_note:
@@ -2164,6 +2209,40 @@ def apply_catalog(scenes: "list[Scene]", prior: dict, only_edited: bool) -> int:
         s.ambiente_note = row.note
         landed += 1
     return landed
+
+
+def apply_picks(scenes: "list[Scene]", shoot: Path) -> int:
+    """Pre-tick the sheet from `picks.txt`, if there is one. Returns how many.
+
+    Until this existed, reopening the contact sheet — the free re-run, or
+    `Abrir.command` — came back with nothing ticked while 63 lines of `picks.txt`
+    sat untouched beside it. Fixing one room's name therefore cost you the whole
+    selection, which is the kind of price that stops anyone from fixing anything.
+
+    **The file outranks both the quota and the vision pass**, and it is the only
+    one of the three a human wrote. It is also what `develop.py` reads, so a sheet
+    that disagreed with it would be exactly the second source of truth this
+    pipeline is built to avoid — including its *noes*: a photograph the file does
+    not name is unticked here even if the quota had taken it. A shoot with no
+    `picks.txt` is left alone, which is every first run.
+
+    Matched on the first frame alone, folded, like `develop.py`'s own lookup: a
+    file someone hand-edited may well have lost a bracket's second frame, and that
+    is not a reason to drop the pick.
+    """
+    chosen, notes = gate.picks(shoot)
+    if not chosen:
+        return 0
+    want = {fold(scene[0]) for scene in chosen}
+    said = {fold(k): v for k, v in notes.items()}
+    hit = 0
+    for s in scenes:
+        key = fold(s.frames[0].path.name)
+        s.chosen = key in want
+        if s.chosen:
+            hit += 1
+            s.pick_note = said.get(key, "")
+    return hit
 
 
 def classify_rooms(job: Path, groups: "list[RoomGroup]",

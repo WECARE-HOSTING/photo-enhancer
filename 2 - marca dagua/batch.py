@@ -246,7 +246,10 @@ def approve(job: Path) -> None:
     # finished work with no record of who approved it.
     fold_gate(job, marks, approved=len(photos))
     archive.build_originais(job)
-    for scratch in (job / review.NAME, job / gate.NAME):
+    # The launcher goes with the page it reopens: `3 - completed/` has no stage
+    # command behind it, so a surviving one would offer to reopen a page that no
+    # longer exists, from a folder that is now an archive.
+    for scratch in (job / review.NAME, job / gate.NAME, job / gate.LAUNCHER):
         if scratch.exists():
             scratch.unlink()
     print(f"aprovado    {job.name} · {len(photos)} foto(s)")
@@ -268,6 +271,9 @@ def main() -> None:
                          "honouring any forced ink")
     ap.add_argument("--approve", action="store_true",
                     help="you looked at the page and it is good — archive it")
+    ap.add_argument("--page-only", action="store_true",
+                    help=f"redraw {review.NAME} from what is already on disk and "
+                         f"serve it, marking nothing. What {gate.LAUNCHER} runs")
     ap.add_argument("--serve", action=argparse.BooleanOptionalAction, default=True,
                     help="hand the review page to a local server so its buttons "
                          "work, and wait there until Ctrl-C (default: yes). "
@@ -284,6 +290,16 @@ def main() -> None:
 
     if args.approve:
         approve(job)
+        return
+
+    # What `Abrir.command` runs: redraw the page from what is on disk and serve
+    # it. Marking is free here, so this is about time and about a shortcut meaning
+    # one thing on every page — not about money.
+    if args.page_only:
+        write_review(job, "sem run")
+        print("\nQuando estiver bom:\n  "
+              + paths.cmd(Path(__file__), "--approve", "--job", job.name))
+        serve_gate(job, args.serve, len(photos))
         return
 
     overrides: "dict[str, dict]" = {}

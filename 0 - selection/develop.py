@@ -133,28 +133,21 @@ fold = ambientes.fold_name
 def read_picks(shoot: Path) -> "tuple[list[list[str]], dict[str, str]]":
     """Parse `picks.txt` into scenes, plus whatever you wrote about each.
 
-    Returns (scenes, comments-by-first-frame). A trailing `#` is a comment, not
-    part of a filename — without this a single note on the sheet made `resolve()`
-    fail to find the file and killed the entire hand-off, for one sentence.
+    Returns (scenes, comments-by-first-frame).
+
+    The grammar itself lives in `gate.picks()`, which `cull.py` also calls to
+    pre-tick the sheet from the same file — one parser, so a sheet cannot read the
+    picks differently from the hand-off that acts on them. What belongs *here* is
+    the pair of exits: a hand-off with no picks has nothing to do, while a shoot
+    nobody has ticked yet is the contact sheet's normal case.
     """
-    path = shoot / "picks.txt"
+    path = shoot / gate.PICKS
     if not path.exists():
         sys.exit(f"error: no {rel(path)}.\n"
                  f"       Open {gate.PAGES['selection']}, tick your choices, "
                  "press 'Copiar picks',\n"
                  f"       and paste it into {rel(path)}.")
-    scenes: "list[list[str]]" = []
-    notes: "dict[str, str]" = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        body, _, note = line.partition("#")
-        frames = [f.strip() for f in body.split("+") if f.strip()]
-        if frames:
-            scenes.append(frames)
-            if note.strip():
-                notes[frames[0]] = note.strip()
+    scenes, notes = gate.picks(shoot)
     if not scenes:
         sys.exit(f"error: {rel(path)} lists no photos")
     return scenes, notes
