@@ -74,9 +74,6 @@ UNKNOWN_SLUG = ambientes.UNKNOWN
 
 VISION_ENDPOINT = "fal-ai/any-llm/vision"
 
-# Cheapest model on the endpoint that reads images competently. Step up to
-# "anthropic/claude-haiku-4.5" if the reasons come back vague or the picks look
-# arbitrary; the full list is in the endpoint's OpenAPI schema.
 VISION_MODEL = "google/gemini-2.5-flash-lite"
 
 # Naming a room is a separate question from ranking photographs, and a more
